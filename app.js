@@ -22,6 +22,32 @@ const FIXED = {
   CATEGORY: "I"
 };
 
+
+const OUT_HEADERS = [
+  "TRN_NO","ETD","CTR_NO","ISO","FE","GROSS","CATEGORY","LINER","CUSTOMER_ID","FPOD","POD",
+  "PLACE_OF_DELIVERY","LLPOD","RELEASE_ORDER","BOOK_NO","ETD_CUST","CALL_SIGN","IN_VOYAGE","OUT_VOYAGE",
+  "EXIT_CALL_SIGN","EXIT_OUT_VOYAGE","DUMMY_NO","ACTION_CODE","POL","BILL_OF_LADING","SEAL_NO","SEAL_TYPE",
+  "SEAL_NO2","SEAL_TYPE2","SEAL_NO3","SEAL_TYPE3","SEAL_NO4","SEAL_TYPE4","SEAL_NO5","SEAL_TYPE5",
+  "SPECIAL_HANDLING_CD","REEFER_TEMP","TEMP_UNIT","OOG_TOP","OOG_LEFT","OOG_RIGHT","OOG_FRONT","OOG_BACK",
+  "DGS_CLASS","UN_NO","DGS_CLASS2","UN_NO2","DGS_CLASS3","UN_NO3","DGS_CLASS4","UN_NO4","DGS_CLASS5",
+  "UN_NO5","COMMENTS","DAMAGE_CD","DAMAGE_CD2","DAMAGE_CD3","DAMAGE_CD4","DAMAGE_CD5","VGM_FLG",
+  "VGM_GROSS","VGM_AM","TARE"
+];
+
+const OUT_FIXED = { TRN_NO: 50418, CATEGORY: "E", LINER: "TFG", CUSTOMER_ID: "TFG" };
+
+const DESTINATION_MAP = {
+  "CT 2": "CT2E",
+  "CT 4": "CT4E",
+  "EUK EKOM": "EUK",
+  "HHL BK": "CTB",
+  "HHL CTA": "CTA",
+  "HHL TCT": "TCT",
+  "JWP WHV": "JWP"
+};
+
+const OUT_SHEET_NAME = "COPARN-Export-Example-RBS";
+
 const SHEET_NAME = "SETG-TCM-COMBITRAC-20210827-610";
 
 const el = (id) => document.getElementById(id);
@@ -32,7 +58,73 @@ const result = el("result");
 const errorBox = el("errorBox");
 const downloadBtn = el("downloadBtn");
 
+const statsBox = document.querySelector(".stats");
+const previewHead = document.querySelector(".table-card thead tr");
+const previewSubtitle = document.querySelector(".table-head p");
+const rulesBox = document.querySelector(".rules");
+const panel = document.querySelector(".panel");
+const heroText = document.querySelector(".hero p");
+const heroFrom = document.querySelector(".hero-badge span:first-child");
+
+let mode = "inbound";
+
 let parsedState = null;
+
+setupModeSwitcher();
+applyModeUi();
+
+
+function setupModeSwitcher() {
+  const style = document.createElement("style");
+  style.textContent = `
+    .mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+    .mode-btn{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:12px;row-gap:2px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:#0b1320;color:var(--text);text-align:left;transition:.18s ease}
+    .mode-btn:hover{border-color:#355071;background:#0e1929}.mode-btn.active{border-color:rgba(59,130,246,.7);background:linear-gradient(145deg,rgba(59,130,246,.13),rgba(11,19,32,.9));box-shadow:inset 0 0 0 1px rgba(59,130,246,.08)}
+    .mode-kicker{grid-row:1/3;display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#13233a;color:#7eb2ff;font-size:10px;font-weight:900;letter-spacing:.08em}
+    .mode-title{font-size:13px;font-weight:800}.mode-desc{font-size:10px;color:#72839b}
+    @media(max-width:760px){.mode-switch{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(style);
+
+  const switcher = document.createElement("div");
+  switcher.className = "mode-switch";
+  switcher.innerHTML = `
+    <button id="modeInbound" class="mode-btn active" type="button">
+      <span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span>
+    </button>
+    <button id="modeOutbound" class="mode-btn" type="button">
+      <span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span>
+    </button>`;
+  panel.parentNode.insertBefore(switcher, panel);
+  el("modeInbound").addEventListener("click", () => setMode("inbound"));
+  el("modeOutbound").addEventListener("click", () => setMode("outbound"));
+}
+
+function setMode(nextMode) {
+  if (mode === nextMode) return;
+  mode = nextMode;
+  el("modeInbound").classList.toggle("active", mode === "inbound");
+  el("modeOutbound").classList.toggle("active", mode === "outbound");
+  reset();
+  applyModeUi();
+}
+
+function applyModeUi() {
+  const inbound = mode === "inbound";
+  fileInput.accept = inbound
+    ? ".pdf,application/pdf"
+    : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
+  document.querySelector(".dropzone h3").textContent = inbound ? "Elisch-PDF hier ablegen" : "TFG-Ladeliste hier ablegen";
+  document.querySelector(".file-hint").textContent = inbound ? "Nur PDF · keine Server-Übertragung" : "Excel (.xlsx/.xls) · keine Server-Übertragung";
+  document.querySelector(".working strong").textContent = inbound ? "PDF wird ausgewertet…" : "Ladeliste wird ausgewertet…";
+  document.querySelector(".working span").textContent = inbound
+    ? "Wagen, Ladeeinheiten und Referenzen werden erkannt."
+    : "Container, Zielterminals und Exportdaten werden erkannt.";
+  heroFrom.textContent = inbound ? "PDF" : "XLSX";
+  heroText.textContent = inbound
+    ? "Elisch-PDF hochladen, Daten prüfen und die fertige TCM-Datei als Excel herunterladen. Die PDF verlässt dabei nicht deinen Browser."
+    : "TFG-Ladeliste hochladen, Exportdaten prüfen und die fertige TFG-Exportdatei als Excel herunterladen. Die Datei bleibt lokal in deinem Browser.";
+}
 
 ["dragenter","dragover"].forEach(evt => {
   dropzone.addEventListener(evt, e => {
@@ -77,25 +169,34 @@ function reset() {
 }
 
 async function handleFile(file) {
-  if (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf"))) {
+  const inbound = mode === "inbound";
+  if (inbound && (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")))) {
     return showError("Bitte eine PDF-Datei auswählen.");
+  }
+  if (!inbound && (!file || !/\\.(xlsx|xls)$/i.test(file.name))) {
+    return showError("Bitte eine Excel-Ladeliste (.xlsx oder .xls) auswählen.");
   }
 
   showOnly(working);
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const parsed = await parseElischPdf(bytes);
-
-    if (!parsed.trainNo) throw new Error("Keine Zugnummer/TrainID erkannt.");
-    if (!parsed.date) throw new Error("Kein Listendatum erkannt.");
-    if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten erkannt.");
-
-    parsedState = { ...parsed, sourceName: file.name };
+    if (inbound) {
+      const parsed = await parseElischPdf(bytes);
+      if (!parsed.trainNo) throw new Error("Keine Zugnummer/TrainID erkannt.");
+      if (!parsed.date) throw new Error("Kein Listendatum erkannt.");
+      if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten erkannt.");
+      parsedState = { ...parsed, sourceName: file.name, mode };
+    } else {
+      const parsed = parseLadeliste(bytes);
+      if (!parsed.date) throw new Error("Kein Versandtag erkannt.");
+      if (!parsed.entries.length) throw new Error("Keine Containerzeilen erkannt.");
+      parsedState = { ...parsed, sourceName: file.name, mode };
+    }
     renderResult(parsedState);
   } catch (err) {
     console.error(err);
-    showError(err?.message || "Unbekannter Fehler beim Lesen der PDF.");
+    showError(err?.message || "Unbekannter Fehler beim Lesen der Datei.");
   }
 }
 
@@ -207,27 +308,107 @@ async function parseElischPdf(bytes) {
   };
 }
 
+
+function parseLadeliste(bytes) {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("Die Arbeitsmappe enthält kein Tabellenblatt.");
+  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+  if (!matrix.length) throw new Error("Die Ladeliste ist leer.");
+
+  const headers = matrix[0].map(clean);
+  const required = ["Container Referenznummer","Kundenauftragsnummer","Ankunftsladestelle","Containernummer","Containertyp","Cont.länge","Containerhöhe","Brutto Gewicht","Leercontainer","Turn Out Referenz","Versandtag"];
+  const missing = required.filter(h => !headers.includes(h));
+  if (missing.length) throw new Error(`Pflichtspalten fehlen: ${missing.join(", ")}`);
+  const idx = Object.fromEntries(headers.map((h,i) => [h,i]));
+  const entries = [], warnings = [], dates = new Set(), destinations = new Set();
+
+  for (let r = 1; r < matrix.length; r++) {
+    const row = matrix[r];
+    const ctrNo = clean(row[idx["Containernummer"]]);
+    if (!ctrNo) continue;
+
+    const date = normalizeDate(row[idx["Versandtag"]]);
+    if (date) dates.add(date);
+
+    const destinationRaw = clean(row[idx["Ankunftsladestelle"]]);
+    const destination = DESTINATION_MAP[destinationRaw];
+    if (destinationRaw) destinations.add(destinationRaw);
+    if (!destination) warnings.push(`Zeile ${r+1}: Unbekannte Ankunftsladestelle „${destinationRaw || "leer"}“.`);
+
+    const type = clean(row[idx["Containertyp"]]).toUpperCase();
+    const length = clean(row[idx["Cont.länge"]]);
+    const height = clean(row[idx["Containerhöhe"]]);
+    const iso = mapIso(type,length,height);
+    if (!iso) warnings.push(`Zeile ${r+1}: ISO-Code für ${type}/${length}/${height} nicht bekannt.`);
+
+    const emptyFlag = clean(row[idx["Leercontainer"]]).toUpperCase();
+    const fe = emptyFlag === "V" ? "F" : emptyFlag === "L" ? "E" : "";
+    if (!fe) warnings.push(`Zeile ${r+1}: Leercontainer-Wert „${emptyFlag || "leer"}“ nicht erkannt.`);
+
+    const turnOutRaw = clean(row[idx["Turn Out Referenz"]]);
+    const releaseOrder = turnOutRaw === "36" ? "" : turnOutRaw;
+
+    entries.push({
+      ctrNo, iso, fe,
+      gross:toNumber(row[idx["Brutto Gewicht"]]),
+      pod:destination || "",
+      releaseOrder,
+      bookNo:toNumber(row[idx["Container Referenznummer"]]),
+      billOfLading:clean(row[idx["Kundenauftragsnummer"]]),
+      date
+    });
+  }
+
+  if (dates.size > 1) warnings.push(`Mehrere Versandtage erkannt: ${[...dates].join(", ")}.`);
+  return { trainNo:50418, date:[...dates][0] || null, entries, unitCount:entries.length, destinationCount:destinations.size, warnings };
+}
+
+function mapIso(type,length,height) {
+  if (type === "DC" && length === "20") return "22G0";
+  if (type === "DC" && length === "40" && height === "86") return "42G0";
+  if (type === "DC" && length === "40" && height === "96") return "45G0";
+  if (type === "OT" && length === "40" && height === "96") return "45OT";
+  if (type === "RF" && length === "40" && height === "96") return "45RT";
+  return "";
+}
+
+function clean(value) { return value === null || value === undefined ? "" : String(value).trim(); }
+function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(String(value).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+function pad2(n) { return String(n).padStart(2,"0"); }
+function normalizeDate(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") {
+    const d = XLSX.SSF.parse_date_code(value);
+    return d ? `${pad2(d.d)}.${pad2(d.m)}.${d.y}` : null;
+  }
+  const m = clean(value).match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})/);
+  return m ? `${m[1]}.${m[2]}.${m[3]}` : null;
+}
+
 function renderResult(data) {
   el("fileName").textContent = data.sourceName;
-  el("trainStat").textContent = data.trainNo ?? "–";
-  el("dateStat").textContent = data.date ?? "–";
-  el("wagonStat").textContent = data.wagonCount;
-  el("unitStat").textContent = data.unitCount;
   el("previewCount").textContent = `${data.unitCount} Zeilen`;
 
-  const tbody = el("previewBody");
-  tbody.innerHTML = "";
+  const stats = mode === "inbound"
+    ? [["Zugnummer",data.trainNo],["Datum",data.date],["Wagen",data.wagonCount],["Ladeeinheiten",data.unitCount]]
+    : [["Zugnummer","50418"],["ETD",`${data.date} 20:00`],["Container",data.unitCount],["Zielterminals",data.destinationCount]];
+  statsBox.innerHTML = stats.map(([label,value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? "–")}</strong></article>`).join("");
 
-  for (const r of data.entries) {
-    const tr = document.createElement("tr");
-    [r.wagonSeq, r.wagonNo, r.ctrNo, r.fe, formatNumber(r.gross), r.bookNo]
-      .forEach(value => {
-        const td = document.createElement("td");
-        td.textContent = value;
-        tr.appendChild(td);
-      });
-    tbody.appendChild(tr);
-  }
+  const columns = mode === "inbound"
+    ? [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["BOOK_NO",r=>r.bookNo]]
+    : [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["POD",r=>r.pod],["BILL_OF_LADING",r=>r.billOfLading]];
+  previewHead.innerHTML = columns.map(([h]) => `<th>${escapeHtml(h)}</th>`).join("");
+  el("previewBody").innerHTML = data.entries.map(r => `<tr>${columns.map(([,get]) => `<td>${escapeHtml(get(r) ?? "")}</td>`).join("")}</tr>`).join("");
+  previewSubtitle.textContent = mode === "inbound" ? "Erkannte TCM-Eingangsdaten" : "Erkannte TFG-Exportdaten";
+  rulesBox.innerHTML = (mode === "inbound"
+    ? [["LINER","TFG"],["ETA","12:00"],["Leading Zero","erhalten"]]
+    : [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]])
+    .map(([k,v]) => `<span>${escapeHtml(k)}: <b>${escapeHtml(v)}</b></span>`).join("");
 
   const warnBox = el("warnings");
   if (data.warnings.length) {
@@ -235,14 +416,14 @@ function renderResult(data) {
     warnBox.classList.remove("hidden");
     el("statusIcon").className = "status-icon warn";
     el("statusIcon").textContent = "!";
-    el("resultTitle").textContent = "PDF verarbeitet – bitte Hinweise prüfen";
+    el("resultTitle").textContent = "Datei verarbeitet – bitte Hinweise prüfen";
   } else {
     warnBox.classList.add("hidden");
     el("statusIcon").className = "status-icon ok";
     el("statusIcon").textContent = "✓";
-    el("resultTitle").textContent = "PDF erfolgreich verarbeitet";
+    el("resultTitle").textContent = "Datei erfolgreich verarbeitet";
   }
-
+  el("resetBtn").textContent = "Andere Datei";
   showOnly(result);
 }
 
@@ -292,41 +473,81 @@ function makeExcelRows(data) {
   });
 }
 
+
+function excelSerialAtTime(dateString, hour, minute = 0) {
+  const {day,month,year} = parseGermanDate(dateString);
+  const excelEpoch = Date.UTC(1899, 11, 30, 0, 0, 0);
+  const target = Date.UTC(year, month - 1, day, hour, minute, 0);
+  return (target - excelEpoch) / 86400000;
+}
+
+function makeOutboundRows(data) {
+  const etd = excelSerialAtTime(data.date,20);
+  return data.entries.map(e => {
+    const row = Object.fromEntries(OUT_HEADERS.map(h => [h,null]));
+    Object.assign(row,OUT_FIXED,{
+      ETD:etd, CTR_NO:e.ctrNo, ISO:e.iso, FE:e.fe, GROSS:e.gross,
+      POD:e.pod, PLACE_OF_DELIVERY:e.pod, RELEASE_ORDER:e.releaseOrder || null,
+      BOOK_NO:e.bookNo, BILL_OF_LADING:e.billOfLading || null
+    });
+    return OUT_HEADERS.map(h => row[h]);
+  });
+}
+
 function downloadExcel() {
   if (!parsedState) return;
 
   try {
     downloadBtn.disabled = true;
 
-    const rows = makeExcelRows(parsedState);
-    const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows], { cellDates:false });
+    if (mode === "inbound") {
+      const rows = makeExcelRows(parsedState);
+      const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows], { cellDates:false });
 
-    // ETA: Excel-Seriennummer mit festem Anzeigeformat.
-    for (let r = 2; r <= rows.length + 1; r++) {
-      const c = ws[`E${r}`];
-      if (c) {
-        c.t = "n";
-        c.z = "dd.mm.yyyy hh:mm";
+      for (let r = 2; r <= rows.length + 1; r++) {
+        const c = ws[`E${r}`];
+        if (c) { c.t = "n"; c.z = "dd.mm.yyyy hh:mm"; }
+        const ctr = ws[`J${r}`];
+        if (ctr) ctr.t = "s";
       }
-      // Container-Nummer ausdrücklich als Text behandeln.
-      const ctr = ws[`J${r}`];
-      if (ctr) ctr.t = "s";
+
+      ws["!cols"] = HEADERS.map((h, i) => {
+        if (i === 7) return { wch: 15 };
+        if (i === 9) return { wch: 16 };
+        if (i === 17) return { wch: 14 };
+        if (i === 4) return { wch: 19 };
+        return { wch: Math.min(Math.max(h.length + 2, 10), 24) };
+      });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, SHEET_NAME);
+      XLSX.writeFile(wb, `CTOS-TCM-IN-TFG - ${parsedState.date}.xlsx`, { bookType:"xlsx", compression:true });
+    } else {
+      const rows = makeOutboundRows(parsedState);
+      const ws = XLSX.utils.aoa_to_sheet([OUT_HEADERS, ...rows], { cellDates:false });
+
+      for (let r = 2; r <= rows.length + 1; r++) {
+        const etd = ws[`B${r}`];
+        if (etd) { etd.t = "n"; etd.z = "dd.mm.yyyy hh:mm"; }
+        const ctr = ws[`C${r}`];
+        if (ctr) ctr.t = "s";
+        const release = ws[`N${r}`];
+        if (release) release.t = "s";
+        const bol = ws[`Y${r}`];
+        if (bol) bol.t = "s";
+      }
+
+      ws["!cols"] = OUT_HEADERS.map((h, i) => {
+        if (i === 1) return { wch: 19 };
+        if (i === 2) return { wch: 16 };
+        if (i === 13 || i === 24) return { wch: 22 };
+        return { wch: Math.min(Math.max(h.length + 2, 10), 24) };
+      });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, OUT_SHEET_NAME);
+      XLSX.writeFile(wb, `TFG EXPORT ${parsedState.date}.xlsx`, { bookType:"xlsx", compression:true });
     }
-
-    // Kompakte, mit der Referenzdatei kompatible Spaltenbreiten.
-    ws["!cols"] = HEADERS.map((h, i) => {
-      if (i === 7) return { wch: 15 };   // WAG_NO
-      if (i === 9) return { wch: 16 };   // CTR_NO
-      if (i === 17) return { wch: 14 };  // BOOK_NO
-      if (i === 4) return { wch: 19 };   // ETA
-      return { wch: Math.min(Math.max(h.length + 2, 10), 24) };
-    });
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, SHEET_NAME);
-
-    const filename = `CTOS-TCM-IN-TFG - ${parsedState.date}.xlsx`;
-    XLSX.writeFile(wb, filename, { bookType:"xlsx", compression:true });
   } catch (err) {
     console.error(err);
     alert("Die Excel-Datei konnte nicht erstellt werden: " + (err?.message || err));
