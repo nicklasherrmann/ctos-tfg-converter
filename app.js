@@ -705,6 +705,28 @@ function makeOutboundRows(data) {
   });
 }
 
+function makeHellmannRows(data) {
+  const eta = excelSerialAtTime(data.etaDate, 4);
+  const rows = [];
+  for (let seq = 1; seq <= 10; seq++) {
+    const wagon = data.wagons.get(seq);
+    for (let slot = 1; slot <= 4; slot++) {
+      const entry = wagon?.slots.get(slot) || null;
+      const row = Object.fromEntries(HELL_HEADERS.map(h => [h, null]));
+      Object.assign(row, HELL_FIXED, {
+        TRN_NO: data.trainNo,
+        ETA: eta,
+        WAG_SEQ_NO: seq,
+        WAG_NO: wagon?.wagonNo ? Number(wagon.wagonNo) : null,
+        CTR_NO: entry?.ctrNo || null,
+        FE: entry?.fe || null,
+        Gross: entry?.gross ?? null
+      });
+      rows.push(HELL_HEADERS.map(h => row[h]));
+    }
+  }
+  return rows;
+}
 function downloadExcel() {
   if (!parsedState) return;
 
