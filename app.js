@@ -253,12 +253,8 @@ function reset() {
 
 async function handleFile(file) {
   const expectsPdf = mode === "inbound" || mode === "hellmann";
-  if (expectsPdf && (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")))) {
-    return showError("Bitte eine PDF-Datei auswählen.");
-  }
-  if (mode === "outbound" && (!file || !/\.(xlsx|xls)$/i.test(file.name))) {
-    return showError("Bitte eine Excel-Ladeliste (.xlsx oder .xls) auswählen.");
-  }
+  if (expectsPdf && (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")))) return showError("Bitte eine PDF-Datei auswählen.");
+  if (!expectsPdf && (!file || !/\.(xlsx|xls)$/i.test(file.name))) return showError("Bitte eine Excel-Datei (.xlsx oder .xls) auswählen.");
   showOnly(working);
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -267,18 +263,22 @@ async function handleFile(file) {
       if (!parsed.trainNo) throw new Error("Keine Zugnummer/TrainID erkannt.");
       if (!parsed.date) throw new Error("Kein Listendatum erkannt.");
       if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten erkannt.");
-      parsedState = { ...parsed, sourceName: file.name, mode };
+      parsedState = { ...parsed, sourceName:file.name, mode };
     } else if (mode === "outbound") {
       const parsed = parseLadeliste(bytes);
       if (!parsed.date) throw new Error("Kein Versandtag erkannt.");
       if (!parsed.entries.length) throw new Error("Keine Containerzeilen erkannt.");
-      parsedState = { ...parsed, sourceName: file.name, mode };
-    } else {
+      parsedState = { ...parsed, sourceName:file.name, mode };
+    } else if (mode === "hellmann") {
       const parsed = await parseHellmannPdf(bytes);
       if (!parsed.trainNo) throw new Error("Keine Zugnummer/TrainID erkannt.");
       if (!parsed.date) throw new Error("Kein Versanddatum erkannt.");
       if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten für Landshut → Osnabrück erkannt.");
-      parsedState = { ...parsed, sourceName: file.name, mode };
+      parsedState = { ...parsed, sourceName:file.name, mode };
+    } else {
+      const parsed = parseHwlLadeliste(bytes);
+      if (!parsed.date) throw new Error("Kein Datum in der HWL-Ladeliste erkannt.");
+      parsedState = { ...parsed, sourceName:file.name, mode };
     }
     renderResult(parsedState);
   } catch (err) {
@@ -289,7 +289,7 @@ async function handleFile(file) {
 
 function showError(message) {
   const title = errorBox.querySelector("h3");
-  if (title) title.textContent = mode === "outbound" ? "Excel-Datei konnte nicht verarbeitet werden" : "PDF konnte nicht verarbeitet werden";
+  if (title) title.textContent = (mode === "outbound" || mode === "hwlOutbound") ? "Excel-Datei konnte nicht verarbeitet werden" : "PDF konnte nicht verarbeitet werden";
   el("errorMessage").textContent = message;
   showOnly(errorBox);
 }
