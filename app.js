@@ -694,29 +694,39 @@ function normalizeDate(value) {
 
 function renderResult(data) {
   el("fileName").textContent = data.sourceName;
-  el("previewCount").textContent = data.unitCount + " Zeilen";
-  let stats, columns, previewRows, subtitle, rules;
+  let stats, columns, previewRows, subtitle, rules, previewLabel;
 
   if (mode === "inbound") {
+    previewLabel = data.unitCount + " Zeilen";
     stats = [["Zugnummer",data.trainNo],["Datum",data.date],["Wagen",data.wagonCount],["Ladeeinheiten",data.unitCount]];
     columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["BOOK_NO",r=>r.bookNo]];
     previewRows = data.entries;
     subtitle = "Erkannte TCM-Eingangsdaten";
     rules = [["LINER","TFG"],["ETA","12:00"],["Leading Zero","erhalten"]];
   } else if (mode === "outbound") {
+    previewLabel = data.unitCount + " Zeilen";
     stats = [["Zugnummer","50418"],["ETD",data.date + " 20:00"],["Container",data.unitCount],["Zielterminals",data.destinationCount]];
     columns = [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["POD",r=>r.pod],["BILL_OF_LADING",r=>r.billOfLading]];
     previewRows = data.entries;
     subtitle = "Erkannte TFG-Exportdaten";
     rules = [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]];
-  } else {
+  } else if (mode === "hellmann") {
+    previewLabel = data.unitCount + " Zeilen";
     stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen erkannt",data.wagonCount],["Ladeeinheiten",data.unitCount]];
     columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["SLOT",r=>r.slot],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["Gross",r=>formatNumber(r.gross)]];
     previewRows = data.entries;
     subtitle = "Landshut → Osnabrück · Lehrte wurde ignoriert";
     rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Wagen 7–10","vorbereitet"]];
+  } else {
+    previewLabel = "40 Verladeplätze";
+    stats = [["Zugnummer","50020"],["ETD",data.date + " 20:00"],["Beladen",data.unitCount + " / 40"],["Nicht verladen",data.ignoredCount]];
+    columns = [["PLATZ",r=>r.position],["BEREICH",r=>r.area],["QUELLE",r=>r.sourceColumn + r.sourceRow],["WB-NR",r=>r.wbNo],["CTR_NO",r=>r.ctrNo],["STATUS",r=>r.ctrNo ? "verladen" : "frei"]];
+    previewRows = data.slots;
+    subtitle = "40 feste Plätze · REG und LDH bleiben positionsgetreu";
+    rules = [["TRN_NO","50020"],["ETD","20:00"],["GROSS","12000"],["Überhang","ignoriert"]];
   }
 
+  el("previewCount").textContent = previewLabel;
   statsBox.innerHTML = stats.map(([label,value]) => "<article><span>" + escapeHtml(label) + "</span><strong>" + escapeHtml(value ?? "–") + "</strong></article>").join("");
   previewHead.innerHTML = columns.map(([h]) => "<th>" + escapeHtml(h) + "</th>").join("");
   el("previewBody").innerHTML = previewRows.map(r => "<tr>" + columns.map(([,get]) => "<td>" + escapeHtml(get(r) ?? "") + "</td>").join("") + "</tr>").join("");
@@ -724,12 +734,14 @@ function renderResult(data) {
   rulesBox.innerHTML = rules.map(([k,v]) => "<span>" + escapeHtml(k) + ": <b>" + escapeHtml(v) + "</b></span>").join("");
 
   const warnBox = el("warnings");
-  if (data.warnings.length) {
-    warnBox.innerHTML = data.warnings.map(w => "⚠ " + escapeHtml(w)).join("<br>");
+  const localWarnings = [...(data.warnings || [])];
+  if (mode === "hwlOutbound" && data.ignoredCount) localWarnings.push(data.ignoredCount + " zusätzliche Einheit(en) außerhalb der 40 Verladeplätze wurden bewusst nicht exportiert.");
+  if (localWarnings.length) {
+    warnBox.innerHTML = localWarnings.map(w => "⚠ " + escapeHtml(w)).join("<br>");
     warnBox.classList.remove("hidden");
     el("statusIcon").className = "status-icon warn";
     el("statusIcon").textContent = "!";
-    el("resultTitle").textContent = "Datei verarbeitet – bitte Hinweise prüfen";
+    el("resultTitle").textContent = mode === "hwlOutbound" ? "HWL-Ladeliste positionsgetreu verarbeitet" : "Datei verarbeitet – bitte Hinweise prüfen";
   } else {
     warnBox.classList.add("hidden");
     el("statusIcon").className = "status-icon ok";
@@ -829,6 +841,21 @@ function makeHellmannRows(data) {
   }
   return rows;
 }
+function makeHwlOutboundRows(data) {
+  const etd = excelSerialAtTime(data.date, 20);
+  return data.slots.map(slot => {
+    const row = Object.fromEntries(HWL_OUT_HEADERS.map(h => [h, null]));
+    Object.assign(row, HWL_OUT_FIXED, {
+      ETD: etd,
+      CTR_NO: slot.ctrNo || null,
+      FPOD: slot.area,
+      POD: slot.area,
+      PLACE_OF_DELIVERY: slot.area,
+      LLPOD: slot.area
+    });
+    return HWL_OUT_HEADERS.map(h => row[h]);
+  });
+}
 function downloadExcel() {
   if (!parsedState) return;
   try {
@@ -836,43 +863,34 @@ function downloadExcel() {
     if (mode === "inbound") {
       const rows = makeExcelRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows], { cellDates:false });
-      for (let r = 2; r <= rows.length + 1; r++) {
-        const c = ws["E"+r]; if (c) { c.t = "n"; c.z = "dd.mm.yyyy hh:mm"; }
-        const ctr = ws["J"+r]; if (ctr) ctr.t = "s";
-      }
-      ws["!cols"] = HEADERS.map((h,i) => ({ wch: i===4 ? 19 : i===7 ? 15 : i===9 ? 16 : i===17 ? 14 : Math.min(Math.max(h.length+2,10),24) }));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, SHEET_NAME);
-      XLSX.writeFile(wb, "CTOS-TCM-IN-TFG - " + parsedState.date + ".xlsx", { bookType:"xlsx", compression:true });
+      for (let r = 2; r <= rows.length + 1; r++) { const c=ws["E"+r]; if(c){c.t="n";c.z="dd.mm.yyyy hh:mm";} const ctr=ws["J"+r]; if(ctr) ctr.t="s"; }
+      ws["!cols"] = HEADERS.map((h,i)=>({wch:i===4?19:i===7?15:i===9?16:i===17?14:Math.min(Math.max(h.length+2,10),24)}));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,SHEET_NAME);
+      XLSX.writeFile(wb,"CTOS-TCM-IN-TFG - "+parsedState.date+".xlsx",{bookType:"xlsx",compression:true});
     } else if (mode === "outbound") {
       const rows = makeOutboundRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([OUT_HEADERS, ...rows], { cellDates:false });
-      for (let r = 2; r <= rows.length + 1; r++) {
-        const etd = ws["B"+r]; if (etd) { etd.t = "n"; etd.z = "dd.mm.yyyy hh:mm"; }
-        const ctr = ws["C"+r]; if (ctr) ctr.t = "s";
-        const release = ws["N"+r]; if (release) release.t = "s";
-        const bol = ws["Y"+r]; if (bol) bol.t = "s";
-      }
-      ws["!cols"] = OUT_HEADERS.map((h,i) => ({ wch: i===1 ? 19 : i===2 ? 16 : (i===13 || i===24) ? 22 : Math.min(Math.max(h.length+2,10),24) }));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, OUT_SHEET_NAME);
-      XLSX.writeFile(wb, "TFG EXPORT " + parsedState.date + ".xlsx", { bookType:"xlsx", compression:true });
-    } else {
+      for (let r=2;r<=rows.length+1;r++){const etd=ws["B"+r];if(etd){etd.t="n";etd.z="dd.mm.yyyy hh:mm";} const ctr=ws["C"+r];if(ctr)ctr.t="s"; const release=ws["N"+r];if(release)release.t="s"; const bol=ws["Y"+r];if(bol)bol.t="s";}
+      ws["!cols"]=OUT_HEADERS.map((h,i)=>({wch:i===1?19:i===2?16:(i===13||i===24)?22:Math.min(Math.max(h.length+2,10),24)}));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,OUT_SHEET_NAME);
+      XLSX.writeFile(wb,"TFG EXPORT "+parsedState.date+".xlsx",{bookType:"xlsx",compression:true});
+    } else if (mode === "hellmann") {
       const rows = makeHellmannRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([HELL_HEADERS, ...rows], { cellDates:false });
-      for (let r = 2; r <= rows.length + 1; r++) {
-        const eta = ws["E"+r]; if (eta) { eta.t = "n"; eta.z = "dd.mm.yyyy hh:mm"; }
-        const ctr = ws["J"+r]; if (ctr) ctr.t = "s";
-      }
-      ws["!cols"] = HELL_HEADERS.map((h,i) => ({ wch: i===4 ? 19 : i===7 ? 15 : i===9 ? 16 : Math.min(Math.max(h.length+2,10),24) }));
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, SHEET_NAME);
-      XLSX.writeFile(wb, "CTOS-TCM-IN-HWL " + parsedState.etaDate + ".xlsx", { bookType:"xlsx", compression:true });
+      for (let r=2;r<=rows.length+1;r++){const eta=ws["E"+r];if(eta){eta.t="n";eta.z="dd.mm.yyyy hh:mm";} const ctr=ws["J"+r];if(ctr)ctr.t="s";}
+      ws["!cols"]=HELL_HEADERS.map((h,i)=>({wch:i===4?19:i===7?15:i===9?16:Math.min(Math.max(h.length+2,10),24)}));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,SHEET_NAME);
+      XLSX.writeFile(wb,"CTOS-TCM-IN-HWL "+parsedState.etaDate+".xlsx",{bookType:"xlsx",compression:true});
+    } else {
+      const rows = makeHwlOutboundRows(parsedState);
+      const ws = XLSX.utils.aoa_to_sheet([HWL_OUT_HEADERS, ...rows], { cellDates:false });
+      for (let r=2;r<=rows.length+1;r++){const etd=ws["B"+r];if(etd){etd.t="n";etd.z="dd.mm.yyyy hh:mm";} const ctr=ws["C"+r];if(ctr)ctr.t="s";}
+      ws["!cols"]=HWL_OUT_HEADERS.map((h,i)=>({wch:i===1?19:i===2?16:Math.min(Math.max(String(h).length+2,10),24)}));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,HWL_OUT_SHEET_NAME);
+      XLSX.writeFile(wb,"HWL EXPORT "+parsedState.date+".xlsx",{bookType:"xlsx",compression:true});
     }
   } catch (err) {
     console.error(err);
     alert("Die Excel-Datei konnte nicht erstellt werden: " + (err?.message || err));
-  } finally {
-    downloadBtn.disabled = false;
-  }
+  } finally { downloadBtn.disabled = false; }
 }
