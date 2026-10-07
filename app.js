@@ -624,6 +624,48 @@ function parseLadeliste(bytes) {
   };
 }
 
+function parseHwlLadeliste(bytes) {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("Die Arbeitsmappe enthält kein Tabellenblatt.");
+  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+  if (matrix.length < 20) throw new Error("Die HWL-Ladeliste hat nicht die erwartete Struktur.");
+
+  let date = normalizeDate(matrix?.[0]?.[1]);
+  if (!date) {
+    for (let r = 0; r < Math.min(matrix.length,5) && !date; r++) {
+      for (let c = 0; c < Math.min((matrix[r]||[]).length,6) && !date; c++) date = normalizeDate(matrix[r][c]);
+    }
+  }
+
+  const slots = [];
+  let position = 1;
+  const addSlot = (rowIndex, colIndex, area) => {
+    const raw = clean(matrix?.[rowIndex]?.[colIndex]);
+    const digits = raw.replace(/\D/g,"");
+    const ctrNo = digits ? "CCPD" + digits.padStart(7,"0") : "";
+    slots.push({ position:position++, area, sourceRow:rowIndex+1, sourceColumn:colIndex===0?"A":"D", wbNo:digits, ctrNo });
+  };
+
+  for (let r = 2; r <= 9; r++) addSlot(r,0,"REG");
+  for (let r = 2; r <= 9; r++) addSlot(r,3,"REG");
+  for (let r = 11; r <= 26; r++) addSlot(r,0,"LDH");
+  for (let r = 11; r <= 18; r++) addSlot(r,3,"LDH");
+
+  const ignored = [];
+  for (let r = 19; r <= 26; r++) {
+    const raw = clean(matrix?.[r]?.[3]);
+    if (raw) ignored.push(raw);
+  }
+
+  return {
+    trainNo:50020, date, slots, entries:slots, unitCount:slots.filter(s=>s.ctrNo).length, slotCount:40,
+    regLoaded:slots.filter(s=>s.area==="REG" && s.ctrNo).length,
+    ldhLoaded:slots.filter(s=>s.area==="LDH" && s.ctrNo).length,
+    emptySlots:slots.filter(s=>!s.ctrNo).length,
+    ignoredCount:ignored.length, ignoredUnits:ignored, warnings:[]
+  };
+}
 function mapIso(type,length,height) {
   if (type === "DC" && length === "20") return "22G0";
   if (type === "DC" && length === "40" && height === "86") return "42G0";
