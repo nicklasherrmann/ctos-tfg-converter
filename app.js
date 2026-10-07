@@ -351,7 +351,7 @@ function parseLadeliste(bytes) {
     if (!fe) warnings.push(`Zeile ${r+1}: Leercontainer-Wert „${emptyFlag || "leer"}“ nicht erkannt.`);
 
     const turnOutRaw = clean(row[idx["Turn Out Referenz"]]);
-    const releaseOrder = turnOutRaw === "36" ? "" : turnOutRaw;
+    const releaseOrder = turnOutRaw;
 
     entries.push({
       ctrNo, iso, fe,
