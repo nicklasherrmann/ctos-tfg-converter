@@ -192,28 +192,32 @@ function reset() {
 }
 
 async function handleFile(file) {
-  const inbound = mode === "inbound";
-  if (inbound && (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")))) {
+  const expectsPdf = mode === "inbound" || mode === "hellmann";
+  if (expectsPdf && (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")))) {
     return showError("Bitte eine PDF-Datei auswählen.");
   }
-  if (!inbound && (!file || !/\.(xlsx|xls)$/i.test(file.name))) {
+  if (mode === "outbound" && (!file || !/\.(xlsx|xls)$/i.test(file.name))) {
     return showError("Bitte eine Excel-Ladeliste (.xlsx oder .xls) auswählen.");
   }
-
   showOnly(working);
-
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    if (inbound) {
+    if (mode === "inbound") {
       const parsed = await parseElischPdf(bytes);
       if (!parsed.trainNo) throw new Error("Keine Zugnummer/TrainID erkannt.");
       if (!parsed.date) throw new Error("Kein Listendatum erkannt.");
       if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten erkannt.");
       parsedState = { ...parsed, sourceName: file.name, mode };
-    } else {
+    } else if (mode === "outbound") {
       const parsed = parseLadeliste(bytes);
       if (!parsed.date) throw new Error("Kein Versandtag erkannt.");
       if (!parsed.entries.length) throw new Error("Keine Containerzeilen erkannt.");
+      parsedState = { ...parsed, sourceName: file.name, mode };
+    } else {
+      const parsed = await parseHellmannPdf(bytes);
+      if (!parsed.trainNo) throw new Error("Keine Zugnummer/TrainID erkannt.");
+      if (!parsed.date) throw new Error("Kein Versanddatum erkannt.");
+      if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten für Landshut → Osnabrück erkannt.");
       parsedState = { ...parsed, sourceName: file.name, mode };
     }
     renderResult(parsedState);
@@ -225,9 +229,7 @@ async function handleFile(file) {
 
 function showError(message) {
   const title = errorBox.querySelector("h3");
-  if (title) title.textContent = mode === "inbound"
-    ? "PDF konnte nicht verarbeitet werden"
-    : "Excel-Datei konnte nicht verarbeitet werden";
+  if (title) title.textContent = mode === "outbound" ? "Excel-Datei konnte nicht verarbeitet werden" : "PDF konnte nicht verarbeitet werden";
   el("errorMessage").textContent = message;
   showOnly(errorBox);
 }
