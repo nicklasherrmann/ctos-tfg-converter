@@ -338,6 +338,114 @@ async function parseElischPdf(bytes) {
 }
 
 
+async function parseHellmannPdf(bytes) {
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  let trainNo = null;
+  let shipDate = null;
+  let currentWagon = null;
+  let wagonSeq = 0;
+  let osnPages = 0;
+  const entries = [];
+  const warnings = [];
+  const wagons = new Map();
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+    const page = await pdf.getPage(pageNo);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({
+      text: i.str.trim(), x: Number(i.transform[4]), y: Number(i.transform[5])
+    }));
+
+    const pageText = items.map(i => i.text).join(" ").toUpperCase();
+    const isOsnabrueck = pageText.includes("OSNABRUECK") && pageText.includes("CTOS");
+    if (!isOsnabrueck) continue;
+    osnPages++;
+
+    if (!trainNo) {
+      const t = items.find(i => /^\d{5}\/$/.test(i.text));
+      if (t) trainNo = Number(t.text.slice(0, -1));
+    }
+    if (!shipDate) {
+      const d = items.find(i => /^\d{2}\.\d{2}\.\d{2}$/.test(i.text));
+      if (d) {
+        const parts = d.text.split(".");
+        shipDate = parts[0] + "." + parts[1] + ".20" + parts[2];
+      }
+    }
+
+    const wagonAnchors = items.filter(i => i.x >= 35 && i.x <= 110 && /^\d{12}$/.test(i.text))
+      .map(i => ({ type:"wagon", y:i.y, wagonNo:i.text }));
+    const containerPrefixes = items.filter(i => i.x >= 120 && i.x <= 155 && /^[A-Z]{4}$/.test(i.text))
+      .map(i => ({ type:"container", y:i.y, prefix:i.text }));
+    const events = wagonAnchors.concat(containerPrefixes).sort((a,b) => {
+      if (Math.abs(a.y - b.y) < 2.5) return a.type === "wagon" ? -1 : 1;
+      return b.y - a.y;
+    });
+
+    for (const event of events) {
+      if (event.type === "wagon") {
+        if (event.wagonNo !== currentWagon) {
+          wagonSeq++;
+          currentWagon = event.wagonNo;
+          if (!wagons.has(wagonSeq)) wagons.set(wagonSeq, { wagonNo:currentWagon, slots:new Map() });
+        }
+        continue;
+      }
+      if (!currentWagon || wagonSeq < 1) {
+        warnings.push("Seite " + pageNo + ": Ladeeinheit " + event.prefix + " ohne zugeordneten Wagen.");
+        continue;
+      }
+
+      const line = items.filter(i => Math.abs(i.y - event.y) <= 3.2);
+      const pick = (xmin, xmax, regex) => line.find(i => i.x >= xmin && i.x < xmax && regex.test(i.text));
+      const leNo = pick(150, 210, /^\d{7}$/);
+      const slot = pick(110, 135, /^[1-4]$/);
+      const nhm = pick(285, 340, /^\d{6}$/);
+      const gross = pick(395, 445, /^\d{3,6}$/);
+
+      if (!leNo || !slot || !nhm || !gross) {
+        warnings.push("Seite " + pageNo + ": " + event.prefix + (leNo ? leNo.text : "") + " konnte nicht vollständig gelesen werden.");
+        continue;
+      }
+      const fe = nhm.text === "993200" ? "E" : nhm.text === "990200" ? "F" : "";
+      if (!fe) warnings.push("Seite " + pageNo + ": Unbekannter NHM-Code " + nhm.text + " bei " + event.prefix + leNo.text + ".");
+
+      const entry = {
+        wagonSeq: wagonSeq,
+        wagonNo: currentWagon,
+        slot: Number(slot.text),
+        ctrNo: event.prefix + leNo.text,
+        fe: fe,
+        gross: Number(gross.text)
+      };
+      entries.push(entry);
+      if (!wagons.has(wagonSeq)) wagons.set(wagonSeq, { wagonNo:currentWagon, slots:new Map() });
+      wagons.get(wagonSeq).slots.set(entry.slot, entry);
+    }
+  }
+
+  if (!osnPages) throw new Error("Keine Relation mit Ziel OSNABRUECK HAFEN CTOS gefunden.");
+  const unique = new Set(entries.map(e => e.ctrNo));
+  if (unique.size !== entries.length) warnings.push("Doppelte Ladeeinheiten erkannt.");
+
+  return {
+    trainNo: trainNo,
+    date: shipDate,
+    etaDate: shipDate ? addDaysToGermanDate(shipDate, 1) : null,
+    entries: entries,
+    wagons: wagons,
+    wagonCount: wagons.size,
+    unitCount: entries.length,
+    osnPages: osnPages,
+    warnings: warnings
+  };
+}
+
+function addDaysToGermanDate(dateString, days) {
+  const p = parseGermanDate(dateString);
+  const d = new Date(Date.UTC(p.year, p.month - 1, p.day + days));
+  return String(d.getUTCDate()).padStart(2,"0") + "." + String(d.getUTCMonth()+1).padStart(2,"0") + "." + d.getUTCFullYear();
+}
 function normalizeHeader(value) {
   return clean(value)
     .toLowerCase()
