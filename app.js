@@ -845,14 +845,16 @@ function makeHwlOutboundRows(data) {
   const etd = excelSerialAtTime(data.date, 20);
   return data.slots.map(slot => {
     const row = Object.fromEntries(HWL_OUT_HEADERS.map(h => [h, null]));
-    Object.assign(row, HWL_OUT_FIXED, {
-      ETD: etd,
-      CTR_NO: slot.ctrNo || null,
-      FPOD: slot.area,
-      POD: slot.area,
-      PLACE_OF_DELIVERY: slot.area,
-      LLPOD: slot.area
-    });
+    if (slot.ctrNo) {
+      Object.assign(row, HWL_OUT_FIXED, {
+        ETD: etd,
+        CTR_NO: slot.ctrNo,
+        FPOD: slot.area,
+        POD: slot.area,
+        PLACE_OF_DELIVERY: slot.area,
+        LLPOD: slot.area
+      });
+    }
     return HWL_OUT_HEADERS.map(h => row[h]);
   });
 }
