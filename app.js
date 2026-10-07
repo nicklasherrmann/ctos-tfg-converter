@@ -117,25 +117,36 @@ function setMode(nextMode) {
   mode = nextMode;
   el("modeInbound").classList.toggle("active", mode === "inbound");
   el("modeOutbound").classList.toggle("active", mode === "outbound");
+  el("modeHellmann").classList.toggle("active", mode === "hellmann");
   reset();
   applyModeUi();
 }
 
 function applyModeUi() {
-  const inbound = mode === "inbound";
-  fileInput.accept = inbound
-    ? ".pdf,application/pdf"
-    : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
-  document.querySelector(".dropzone h3").textContent = inbound ? "Elisch-PDF hier ablegen" : "TFG-Ladeliste hier ablegen";
-  document.querySelector(".file-hint").textContent = inbound ? "Nur PDF · keine Server-Übertragung" : "Excel (.xlsx/.xls) · keine Server-Übertragung";
-  document.querySelector(".working strong").textContent = inbound ? "PDF wird ausgewertet…" : "Ladeliste wird ausgewertet…";
-  document.querySelector(".working span").textContent = inbound
-    ? "Wagen, Ladeeinheiten und Referenzen werden erkannt."
-    : "Container, Zielterminals und Exportdaten werden erkannt.";
-  heroFrom.textContent = inbound ? "PDF" : "XLSX";
-  heroText.textContent = inbound
-    ? "Elisch-PDF hochladen, Daten prüfen und die fertige TCM-Datei als Excel herunterladen. Die PDF verlässt dabei nicht deinen Browser."
-    : "TFG-Ladeliste hochladen, Exportdaten prüfen und die fertige TFG-Exportdatei als Excel herunterladen. Die Datei bleibt lokal in deinem Browser.";
+  const expectsPdf = mode === "inbound" || mode === "hellmann";
+  fileInput.accept = expectsPdf ? ".pdf,application/pdf" : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
+  if (mode === "inbound") {
+    document.querySelector(".dropzone h3").textContent = "Elisch-PDF hier ablegen";
+    document.querySelector(".file-hint").textContent = "Nur PDF · keine Server-Übertragung";
+    document.querySelector(".working strong").textContent = "PDF wird ausgewertet…";
+    document.querySelector(".working span").textContent = "Wagen, Ladeeinheiten und Referenzen werden erkannt.";
+    heroFrom.textContent = "PDF";
+    heroText.textContent = "Elisch-PDF hochladen, Daten prüfen und die fertige TCM-Datei als Excel herunterladen. Die PDF verlässt dabei nicht deinen Browser.";
+  } else if (mode === "outbound") {
+    document.querySelector(".dropzone h3").textContent = "TFG-Ladeliste hier ablegen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · keine Server-Übertragung";
+    document.querySelector(".working strong").textContent = "Ladeliste wird ausgewertet…";
+    document.querySelector(".working span").textContent = "Container, Zielterminals und Exportdaten werden erkannt.";
+    heroFrom.textContent = "XLSX";
+    heroText.textContent = "TFG-Ladeliste hochladen, Exportdaten prüfen und die fertige TFG-Exportdatei als Excel herunterladen. Die Datei bleibt lokal in deinem Browser.";
+  } else {
+    document.querySelector(".dropzone h3").textContent = "Hellmann-Wagenliste hier ablegen";
+    document.querySelector(".file-hint").textContent = "Nur PDF · Landshut → Osnabrück wird automatisch gefiltert";
+    document.querySelector(".working strong").textContent = "Hellmann-PDF wird ausgewertet…";
+    document.querySelector(".working span").textContent = "Nur Landshut → Osnabrück wird verarbeitet; Lehrte wird ignoriert.";
+    heroFrom.textContent = "PDF";
+    heroText.textContent = "Hellmann-Wagenliste hochladen. Das Tool übernimmt ausschließlich Landshut → Osnabrück, bereitet Wagen 7–10 vor und erstellt die HWL-TCM-Datei.";
+  }
 }
 
 ["dragenter","dragover"].forEach(evt => {
