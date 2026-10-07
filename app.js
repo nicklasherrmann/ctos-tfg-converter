@@ -201,6 +201,10 @@ async function handleFile(file) {
 }
 
 function showError(message) {
+  const title = errorBox.querySelector("h3");
+  if (title) title.textContent = mode === "inbound"
+    ? "PDF konnte nicht verarbeitet werden"
+    : "Excel-Datei konnte nicht verarbeitet werden";
   el("errorMessage").textContent = message;
   showOnly(errorBox);
 }
