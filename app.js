@@ -99,28 +99,17 @@ applyModeUi();
 
 function setupModeSwitcher() {
   const style = document.createElement("style");
-  style.textContent = `
-    .mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
-    .mode-btn{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:12px;row-gap:2px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:#0b1320;color:var(--text);text-align:left;transition:.18s ease}
-    .mode-btn:hover{border-color:#355071;background:#0e1929}.mode-btn.active{border-color:rgba(59,130,246,.7);background:linear-gradient(145deg,rgba(59,130,246,.13),rgba(11,19,32,.9));box-shadow:inset 0 0 0 1px rgba(59,130,246,.08)}
-    .mode-kicker{grid-row:1/3;display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#13233a;color:#7eb2ff;font-size:10px;font-weight:900;letter-spacing:.08em}
-    .mode-title{font-size:13px;font-weight:800}.mode-desc{font-size:10px;color:#72839b}
-    @media(max-width:760px){.mode-switch{grid-template-columns:1fr}}
-  `;
+  style.textContent = ".mode-switch{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px} .mode-btn{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:12px;row-gap:2px;align-items:center;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:#0b1320;color:var(--text);text-align:left;transition:.18s ease} .mode-btn:hover{border-color:#355071;background:#0e1929}.mode-btn.active{border-color:rgba(59,130,246,.7);background:linear-gradient(145deg,rgba(59,130,246,.13),rgba(11,19,32,.9));box-shadow:inset 0 0 0 1px rgba(59,130,246,.08)} .mode-kicker{grid-row:1/3;display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:#13233a;color:#7eb2ff;font-size:10px;font-weight:900;letter-spacing:.08em} .mode-title{font-size:13px;font-weight:800}.mode-desc{font-size:10px;color:#72839b} @media(max-width:900px){.mode-switch{grid-template-columns:1fr}}";
   document.head.appendChild(style);
-
   const switcher = document.createElement("div");
   switcher.className = "mode-switch";
-  switcher.innerHTML = `
-    <button id="modeInbound" class="mode-btn active" type="button">
-      <span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span>
-    </button>
-    <button id="modeOutbound" class="mode-btn" type="button">
-      <span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span>
-    </button>`;
+  switcher.innerHTML = '<button id="modeInbound" class="mode-btn active" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span></button>' +
+    '<button id="modeOutbound" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
+    '<button id="modeHellmann" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Hellmann Eingang</span><span class="mode-desc">Wagenliste PDF → TCM Excel</span></button>';
   panel.parentNode.insertBefore(switcher, panel);
   el("modeInbound").addEventListener("click", () => setMode("inbound"));
   el("modeOutbound").addEventListener("click", () => setMode("outbound"));
+  el("modeHellmann").addEventListener("click", () => setMode("hellmann"));
 }
 
 function setMode(nextMode) {
