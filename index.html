@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>CTOS · TFG Converter</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">CTOS</div>
+        <div>
+          <h1>TFG Converter</h1>
+          <p>Elisch-PDF → TCM-Excel</p>
+        </div>
+      </div>
+      <div class="privacy">
+        <span class="dot"></span>
+        Verarbeitung lokal im Browser
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="eyebrow">CTOS TOOL</div>
+        <h2>TFG-Liste in Sekunden konvertieren.</h2>
+        <p>
+          Elisch-PDF hochladen, Daten prüfen und die fertige TCM-Datei als Excel herunterladen.
+          Die PDF verlässt dabei nicht deinen Browser.
+        </p>
+      </div>
+      <div class="hero-badge">
+        <span>PDF</span>
+        <b>→</b>
+        <span>XLSX</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="PDF auswählen">
+        <input id="fileInput" type="file" accept=".pdf,application/pdf" hidden>
+        <div class="upload-icon">↑</div>
+        <h3>Elisch-PDF hier ablegen</h3>
+        <p>oder klicken, um eine Datei auszuwählen</p>
+        <span class="file-hint">Nur PDF · keine Server-Übertragung</span>
+      </div>
+
+      <div id="working" class="working hidden">
+        <div class="spinner"></div>
+        <div>
+          <strong>PDF wird ausgewertet…</strong>
+          <span>Wagen, Ladeeinheiten und Referenzen werden erkannt.</span>
+        </div>
+      </div>
+
+      <div id="result" class="result hidden">
+        <div class="result-head">
+          <div>
+            <div class="status-line">
+              <span id="statusIcon" class="status-icon ok">✓</span>
+              <div>
+                <h3 id="resultTitle">PDF erfolgreich verarbeitet</h3>
+                <p id="fileName"></p>
+              </div>
+            </div>
+          </div>
+          <button id="resetBtn" class="ghost-btn">Andere PDF</button>
+        </div>
+
+        <div class="stats">
+          <article>
+            <span>Zugnummer</span>
+            <strong id="trainStat">–</strong>
+          </article>
+          <article>
+            <span>Datum</span>
+            <strong id="dateStat">–</strong>
+          </article>
+          <article>
+            <span>Wagen</span>
+            <strong id="wagonStat">–</strong>
+          </article>
+          <article>
+            <span>Ladeeinheiten</span>
+            <strong id="unitStat">–</strong>
+          </article>
+        </div>
+
+        <div id="warnings" class="warnings hidden"></div>
+
+        <div class="table-card">
+          <div class="table-head">
+            <div>
+              <h3>Vorschau</h3>
+              <p>Erkannte TCM-Daten</p>
+            </div>
+            <span id="previewCount"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>SEQ</th>
+                  <th>WAG_NO</th>
+                  <th>CTR_NO</th>
+                  <th>FE</th>
+                  <th>GROSS</th>
+                  <th>BOOK_NO</th>
+                </tr>
+              </thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="actions">
+          <div class="rules">
+            <span>LINER: <b>TFG</b></span>
+            <span>ETA: <b>12:00</b></span>
+            <span>Leading Zero: <b>erhalten</b></span>
+          </div>
+          <button id="downloadBtn" class="primary-btn">
+            <span>Excel erstellen</span>
+            <b>↓</b>
+          </button>
+        </div>
+      </div>
+
+      <div id="errorBox" class="error-box hidden">
+        <div class="status-icon error">!</div>
+        <div>
+          <h3>PDF konnte nicht verarbeitet werden</h3>
+          <p id="errorMessage"></p>
+        </div>
+        <button id="errorResetBtn" class="ghost-btn">Neu versuchen</button>
+      </div>
+    </section>
+
+    <footer>
+      <span>CTOS · TFG Converter</span>
+      <span>Alle Daten werden ausschließlich lokal verarbeitet.</span>
+    </footer>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
