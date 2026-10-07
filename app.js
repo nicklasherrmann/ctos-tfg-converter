@@ -323,7 +323,7 @@ function normalizeHeader(value) {
 }
 
 const OUTBOUND_COLUMNS = [
-  { key:"bookNo", label:"Container Referenznummer", aliases:["containerreferenznummer","containerreferenznr","containerreferenz","containereferenznummer","containerref","icnummer"] },
+  { key:"bookNo", label:"Container Referenznummer", aliases:["containerreferenznummer","containerreferenznr","containerreferenz","containereferenznummer","containerref","icnummer","iknummer","iknr","ikno"] },
   { key:"billOfLading", label:"Kundenauftragsnummer", aliases:["kundenauftragsnummer","kundenauftragsnr","kundenauftrag"] },
   { key:"destination", label:"Ankunftsladestelle", aliases:["ankunftsladestelle","ankunftladeort","ladestelleankunft"] },
   { key:"ctrNo", label:"Containernummer", aliases:["containernummer","containernr","containerno","container"] },
