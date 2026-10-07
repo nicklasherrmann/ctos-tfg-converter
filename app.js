@@ -173,7 +173,7 @@ async function handleFile(file) {
   if (inbound && (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")))) {
     return showError("Bitte eine PDF-Datei auswählen.");
   }
-  if (!inbound && (!file || !/\\.(xlsx|xls)$/i.test(file.name))) {
+  if (!inbound && (!file || !/\.(xlsx|xls)$/i.test(file.name))) {
     return showError("Bitte eine Excel-Ladeliste (.xlsx oder .xls) auswählen.");
   }
 
@@ -390,7 +390,7 @@ function normalizeDate(value) {
     const d = XLSX.SSF.parse_date_code(value);
     return d ? `${pad2(d.d)}.${pad2(d.m)}.${d.y}` : null;
   }
-  const m = clean(value).match(/^(\\d{2})\\.(\\d{2})\\.(\\d{4})/);
+  const m = clean(value).match(/^(\d{2})\.(\d{2})\.(\d{4})/);
   return m ? `${m[1]}.${m[2]}.${m[3]}` : null;
 }
 
