@@ -592,27 +592,38 @@ function normalizeDate(value) {
 
 function renderResult(data) {
   el("fileName").textContent = data.sourceName;
-  el("previewCount").textContent = `${data.unitCount} Zeilen`;
+  el("previewCount").textContent = data.unitCount + " Zeilen";
+  let stats, columns, previewRows, subtitle, rules;
 
-  const stats = mode === "inbound"
-    ? [["Zugnummer",data.trainNo],["Datum",data.date],["Wagen",data.wagonCount],["Ladeeinheiten",data.unitCount]]
-    : [["Zugnummer","50418"],["ETD",`${data.date} 20:00`],["Container",data.unitCount],["Zielterminals",data.destinationCount]];
-  statsBox.innerHTML = stats.map(([label,value]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value ?? "–")}</strong></article>`).join("");
+  if (mode === "inbound") {
+    stats = [["Zugnummer",data.trainNo],["Datum",data.date],["Wagen",data.wagonCount],["Ladeeinheiten",data.unitCount]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["BOOK_NO",r=>r.bookNo]];
+    previewRows = data.entries;
+    subtitle = "Erkannte TCM-Eingangsdaten";
+    rules = [["LINER","TFG"],["ETA","12:00"],["Leading Zero","erhalten"]];
+  } else if (mode === "outbound") {
+    stats = [["Zugnummer","50418"],["ETD",data.date + " 20:00"],["Container",data.unitCount],["Zielterminals",data.destinationCount]];
+    columns = [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["POD",r=>r.pod],["BILL_OF_LADING",r=>r.billOfLading]];
+    previewRows = data.entries;
+    subtitle = "Erkannte TFG-Exportdaten";
+    rules = [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]];
+  } else {
+    stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen erkannt",data.wagonCount],["Ladeeinheiten",data.unitCount]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["SLOT",r=>r.slot],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["Gross",r=>formatNumber(r.gross)]];
+    previewRows = data.entries;
+    subtitle = "Landshut → Osnabrück · Lehrte wurde ignoriert";
+    rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Wagen 7–10","vorbereitet"]];
+  }
 
-  const columns = mode === "inbound"
-    ? [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["BOOK_NO",r=>r.bookNo]]
-    : [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["POD",r=>r.pod],["BILL_OF_LADING",r=>r.billOfLading]];
-  previewHead.innerHTML = columns.map(([h]) => `<th>${escapeHtml(h)}</th>`).join("");
-  el("previewBody").innerHTML = data.entries.map(r => `<tr>${columns.map(([,get]) => `<td>${escapeHtml(get(r) ?? "")}</td>`).join("")}</tr>`).join("");
-  previewSubtitle.textContent = mode === "inbound" ? "Erkannte TCM-Eingangsdaten" : "Erkannte TFG-Exportdaten";
-  rulesBox.innerHTML = (mode === "inbound"
-    ? [["LINER","TFG"],["ETA","12:00"],["Leading Zero","erhalten"]]
-    : [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]])
-    .map(([k,v]) => `<span>${escapeHtml(k)}: <b>${escapeHtml(v)}</b></span>`).join("");
+  statsBox.innerHTML = stats.map(([label,value]) => "<article><span>" + escapeHtml(label) + "</span><strong>" + escapeHtml(value ?? "–") + "</strong></article>").join("");
+  previewHead.innerHTML = columns.map(([h]) => "<th>" + escapeHtml(h) + "</th>").join("");
+  el("previewBody").innerHTML = previewRows.map(r => "<tr>" + columns.map(([,get]) => "<td>" + escapeHtml(get(r) ?? "") + "</td>").join("") + "</tr>").join("");
+  previewSubtitle.textContent = subtitle;
+  rulesBox.innerHTML = rules.map(([k,v]) => "<span>" + escapeHtml(k) + ": <b>" + escapeHtml(v) + "</b></span>").join("");
 
   const warnBox = el("warnings");
   if (data.warnings.length) {
-    warnBox.innerHTML = data.warnings.map(w => `⚠ ${escapeHtml(w)}`).join("<br>");
+    warnBox.innerHTML = data.warnings.map(w => "⚠ " + escapeHtml(w)).join("<br>");
     warnBox.classList.remove("hidden");
     el("statusIcon").className = "status-icon warn";
     el("statusIcon").textContent = "!";
@@ -621,7 +632,7 @@ function renderResult(data) {
     warnBox.classList.add("hidden");
     el("statusIcon").className = "status-icon ok";
     el("statusIcon").textContent = "✓";
-    el("resultTitle").textContent = "Datei erfolgreich verarbeitet";
+    el("resultTitle").textContent = mode === "hellmann" ? "Osnabrück-Abschnitt erfolgreich verarbeitet" : "Datei erfolgreich verarbeitet";
   }
   el("resetBtn").textContent = "Andere Datei";
   showOnly(result);
