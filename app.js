@@ -729,57 +729,43 @@ function makeHellmannRows(data) {
 }
 function downloadExcel() {
   if (!parsedState) return;
-
   try {
     downloadBtn.disabled = true;
-
     if (mode === "inbound") {
       const rows = makeExcelRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows], { cellDates:false });
-
       for (let r = 2; r <= rows.length + 1; r++) {
-        const c = ws[`E${r}`];
-        if (c) { c.t = "n"; c.z = "dd.mm.yyyy hh:mm"; }
-        const ctr = ws[`J${r}`];
-        if (ctr) ctr.t = "s";
+        const c = ws["E"+r]; if (c) { c.t = "n"; c.z = "dd.mm.yyyy hh:mm"; }
+        const ctr = ws["J"+r]; if (ctr) ctr.t = "s";
       }
-
-      ws["!cols"] = HEADERS.map((h, i) => {
-        if (i === 7) return { wch: 15 };
-        if (i === 9) return { wch: 16 };
-        if (i === 17) return { wch: 14 };
-        if (i === 4) return { wch: 19 };
-        return { wch: Math.min(Math.max(h.length + 2, 10), 24) };
-      });
-
+      ws["!cols"] = HEADERS.map((h,i) => ({ wch: i===4 ? 19 : i===7 ? 15 : i===9 ? 16 : i===17 ? 14 : Math.min(Math.max(h.length+2,10),24) }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, SHEET_NAME);
-      XLSX.writeFile(wb, `CTOS-TCM-IN-TFG - ${parsedState.date}.xlsx`, { bookType:"xlsx", compression:true });
-    } else {
+      XLSX.writeFile(wb, "CTOS-TCM-IN-TFG - " + parsedState.date + ".xlsx", { bookType:"xlsx", compression:true });
+    } else if (mode === "outbound") {
       const rows = makeOutboundRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([OUT_HEADERS, ...rows], { cellDates:false });
-
       for (let r = 2; r <= rows.length + 1; r++) {
-        const etd = ws[`B${r}`];
-        if (etd) { etd.t = "n"; etd.z = "dd.mm.yyyy hh:mm"; }
-        const ctr = ws[`C${r}`];
-        if (ctr) ctr.t = "s";
-        const release = ws[`N${r}`];
-        if (release) release.t = "s";
-        const bol = ws[`Y${r}`];
-        if (bol) bol.t = "s";
+        const etd = ws["B"+r]; if (etd) { etd.t = "n"; etd.z = "dd.mm.yyyy hh:mm"; }
+        const ctr = ws["C"+r]; if (ctr) ctr.t = "s";
+        const release = ws["N"+r]; if (release) release.t = "s";
+        const bol = ws["Y"+r]; if (bol) bol.t = "s";
       }
-
-      ws["!cols"] = OUT_HEADERS.map((h, i) => {
-        if (i === 1) return { wch: 19 };
-        if (i === 2) return { wch: 16 };
-        if (i === 13 || i === 24) return { wch: 22 };
-        return { wch: Math.min(Math.max(h.length + 2, 10), 24) };
-      });
-
+      ws["!cols"] = OUT_HEADERS.map((h,i) => ({ wch: i===1 ? 19 : i===2 ? 16 : (i===13 || i===24) ? 22 : Math.min(Math.max(h.length+2,10),24) }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, OUT_SHEET_NAME);
-      XLSX.writeFile(wb, `TFG EXPORT ${parsedState.date}.xlsx`, { bookType:"xlsx", compression:true });
+      XLSX.writeFile(wb, "TFG EXPORT " + parsedState.date + ".xlsx", { bookType:"xlsx", compression:true });
+    } else {
+      const rows = makeHellmannRows(parsedState);
+      const ws = XLSX.utils.aoa_to_sheet([HELL_HEADERS, ...rows], { cellDates:false });
+      for (let r = 2; r <= rows.length + 1; r++) {
+        const eta = ws["E"+r]; if (eta) { eta.t = "n"; eta.z = "dd.mm.yyyy hh:mm"; }
+        const ctr = ws["J"+r]; if (ctr) ctr.t = "s";
+      }
+      ws["!cols"] = HELL_HEADERS.map((h,i) => ({ wch: i===4 ? 19 : i===7 ? 15 : i===9 ? 16 : Math.min(Math.max(h.length+2,10),24) }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, SHEET_NAME);
+      XLSX.writeFile(wb, "CTOS-TCM-IN-HWL " + parsedState.etaDate + ".xlsx", { bookType:"xlsx", compression:true });
     }
   } catch (err) {
     console.error(err);
