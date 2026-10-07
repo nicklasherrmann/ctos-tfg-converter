@@ -313,59 +313,122 @@ async function parseElischPdf(bytes) {
 }
 
 
+function normalizeHeader(value) {
+  return clean(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+const OUTBOUND_COLUMNS = [
+  { key:"bookNo", label:"Container Referenznummer", aliases:["containerreferenznummer","containerreferenznr","containerreferenz","containereferenznummer","containerref"] },
+  { key:"billOfLading", label:"Kundenauftragsnummer", aliases:["kundenauftragsnummer","kundenauftragsnr","kundenauftrag"] },
+  { key:"destination", label:"Ankunftsladestelle", aliases:["ankunftsladestelle","ankunftladeort","ladestelleankunft"] },
+  { key:"ctrNo", label:"Containernummer", aliases:["containernummer","containernr","containerno","container"] },
+  { key:"type", label:"Containertyp", aliases:["containertyp","containertype","containerart"] },
+  { key:"length", label:"Cont.länge", aliases:["contlange","containerlange","containerlaenge","contlaenge"] },
+  { key:"height", label:"Containerhöhe", aliases:["containerhohe","containerhoehe","conthohe","conthoehe"] },
+  { key:"gross", label:"Brutto Gewicht", aliases:["bruttogewicht","bruttogew","brutto","grossweight"] },
+  { key:"emptyFlag", label:"Leercontainer", aliases:["leercontainer","leer","leerkennzeichen"] },
+  { key:"releaseOrder", label:"Turn Out Referenz", aliases:["turnoutreferenz","turnoutreference","turnoutref","turnout"] },
+  { key:"date", label:"Versandtag", aliases:["versandtag","versanddatum","shippingdate"] }
+];
+
+function identifyHeaderRow(matrix) {
+  let best = { row:-1, score:-1, indices:{} };
+  const maxRows = Math.min(matrix.length, 30);
+
+  for (let r = 0; r < maxRows; r++) {
+    const normalized = (matrix[r] || []).map(normalizeHeader);
+    const indices = {};
+    let score = 0;
+
+    for (const col of OUTBOUND_COLUMNS) {
+      const pos = normalized.findIndex(h => col.aliases.includes(h));
+      if (pos >= 0) {
+        indices[col.key] = pos;
+        score++;
+      }
+    }
+
+    if (score > best.score) best = { row:r, score, indices };
+  }
+  return best;
+}
+
 function parseLadeliste(bytes) {
   const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   if (!ws) throw new Error("Die Arbeitsmappe enthält kein Tabellenblatt.");
+
   const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
   if (!matrix.length) throw new Error("Die Ladeliste ist leer.");
 
-  const headers = matrix[0].map(clean);
-  const required = ["Container Referenznummer","Kundenauftragsnummer","Ankunftsladestelle","Containernummer","Containertyp","Cont.länge","Containerhöhe","Brutto Gewicht","Leercontainer","Turn Out Referenz","Versandtag"];
-  const missing = required.filter(h => !headers.includes(h));
-  if (missing.length) throw new Error(`Pflichtspalten fehlen: ${missing.join(", ")}`);
-  const idx = Object.fromEntries(headers.map((h,i) => [h,i]));
+  const headerMatch = identifyHeaderRow(matrix);
+  const missing = OUTBOUND_COLUMNS.filter(c => headerMatch.indices[c.key] === undefined);
+
+  if (headerMatch.row < 0 || missing.length) {
+    const detected = headerMatch.row >= 0
+      ? (matrix[headerMatch.row] || []).map(clean).filter(Boolean).slice(0,18).join(" | ")
+      : "";
+    throw new Error(
+      `Pflichtspalten fehlen: ${missing.map(c => c.label).join(", ")}` +
+      (detected ? `. Erkannte Überschriften: ${detected}` : "")
+    );
+  }
+
+  const idx = headerMatch.indices;
   const entries = [], warnings = [], dates = new Set(), destinations = new Set();
 
-  for (let r = 1; r < matrix.length; r++) {
+  for (let r = headerMatch.row + 1; r < matrix.length; r++) {
     const row = matrix[r];
-    const ctrNo = clean(row[idx["Containernummer"]]);
+    const ctrNo = clean(row[idx.ctrNo]);
     if (!ctrNo) continue;
 
-    const date = normalizeDate(row[idx["Versandtag"]]);
+    const date = normalizeDate(row[idx.date]);
     if (date) dates.add(date);
 
-    const destinationRaw = clean(row[idx["Ankunftsladestelle"]]);
+    const destinationRaw = clean(row[idx.destination]);
     const destination = DESTINATION_MAP[destinationRaw];
     if (destinationRaw) destinations.add(destinationRaw);
     if (!destination) warnings.push(`Zeile ${r+1}: Unbekannte Ankunftsladestelle „${destinationRaw || "leer"}“.`);
 
-    const type = clean(row[idx["Containertyp"]]).toUpperCase();
-    const length = clean(row[idx["Cont.länge"]]);
-    const height = clean(row[idx["Containerhöhe"]]);
+    const type = clean(row[idx.type]).toUpperCase();
+    const length = clean(row[idx.length]);
+    const height = clean(row[idx.height]);
     const iso = mapIso(type,length,height);
     if (!iso) warnings.push(`Zeile ${r+1}: ISO-Code für ${type}/${length}/${height} nicht bekannt.`);
 
-    const emptyFlag = clean(row[idx["Leercontainer"]]).toUpperCase();
+    const emptyFlag = clean(row[idx.emptyFlag]).toUpperCase();
     const fe = emptyFlag === "V" ? "F" : emptyFlag === "L" ? "E" : "";
     if (!fe) warnings.push(`Zeile ${r+1}: Leercontainer-Wert „${emptyFlag || "leer"}“ nicht erkannt.`);
 
-    const turnOutRaw = clean(row[idx["Turn Out Referenz"]]);
-    const releaseOrder = turnOutRaw;
+    const releaseOrder = clean(row[idx.releaseOrder]);
 
     entries.push({
-      ctrNo, iso, fe,
-      gross:toNumber(row[idx["Brutto Gewicht"]]),
+      ctrNo,
+      iso,
+      fe,
+      gross:toNumber(row[idx.gross]),
       pod:destination || "",
       releaseOrder,
-      bookNo:toNumber(row[idx["Container Referenznummer"]]),
-      billOfLading:clean(row[idx["Kundenauftragsnummer"]]),
+      bookNo:clean(row[idx.bookNo]),
+      billOfLading:clean(row[idx.billOfLading]),
       date
     });
   }
 
   if (dates.size > 1) warnings.push(`Mehrere Versandtage erkannt: ${[...dates].join(", ")}.`);
-  return { trainNo:50418, date:[...dates][0] || null, entries, unitCount:entries.length, destinationCount:destinations.size, warnings };
+  return {
+    trainNo:50418,
+    date:[...dates][0] || null,
+    entries,
+    unitCount:entries.length,
+    destinationCount:destinations.size,
+    warnings
+  };
 }
 
 function mapIso(type,length,height) {
