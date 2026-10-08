@@ -255,14 +255,24 @@ function selectBrand(brand) {
   document.querySelector(".hero").classList.remove("hidden");
   panel.classList.remove("hidden");
   document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("hidden", btn.dataset.brand !== brand));
-  document.querySelector(".brand h1").textContent = brand === "tfg" ? "TFG Converter" : "HWL Converter";
-  document.querySelector(".brand p").textContent = brand === "tfg" ? "TFG Import & Export" : "HWL Import & Export";
-  setMode(brand === "tfg" ? "inbound" : "hellmann");
+  document.querySelector(".mode-switch").classList.toggle("single", brand === "med");
+  const titles = { tfg:"TFG Converter", hwl:"HWL Converter", med:"MEDLOG Converter" };
+  const subtitles = { tfg:"TFG Import & Export", hwl:"HWL Import & Export", med:"MEDLOG Eingang" };
+  document.querySelector(".brand h1").textContent = titles[brand] || "CTOS Converter";
+  document.querySelector(".brand p").textContent = subtitles[brand] || "Import & Export";
+  setMode(brand === "tfg" ? "inbound" : brand === "hwl" ? "hellmann" : "medInbound");
 }
 
 function setMode(nextMode) {
   mode = nextMode;
-  ["modeInbound","modeOutbound","modeHellmann","modeHwlOutbound"].forEach(id => el(id).classList.toggle("active", id === ({inbound:"modeInbound",outbound:"modeOutbound",hellmann:"modeHellmann",hwlOutbound:"modeHwlOutbound"}[mode])));
+  const map = {
+    inbound:"modeInbound",
+    outbound:"modeOutbound",
+    hellmann:"modeHellmann",
+    hwlOutbound:"modeHwlOutbound",
+    medInbound:"modeMedInbound"
+  };
+  ["modeInbound","modeOutbound","modeHellmann","modeHwlOutbound","modeMedInbound"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
   reset();
   applyModeUi();
 }
@@ -294,6 +304,14 @@ function applyModeUi() {
     document.querySelector(".working span").textContent = "Nur Landshut → Osnabrück wird verarbeitet; Lehrte wird ignoriert.";
     heroFrom.textContent = "PDF";
     heroText.textContent = "Zuerst die Landshut-PDF hochladen. Anschließend kann die separate Regensburg-Liste für Wagen 7–10 direkt ergänzt werden.";
+  } else if (mode === "medInbound") {
+    document.querySelector(".hero h2").textContent = "MEDLOG-Eingang konvertieren.";
+    document.querySelector(".dropzone h3").textContent = "MEDLOG Train Composition hier ablegen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · Blatt Outbound wird automatisch verwendet";
+    document.querySelector(".working strong").textContent = "MEDLOG-Datei wird ausgewertet…";
+    document.querySelector(".working span").textContent = "Wagen, Container, ISO-Codes und Gewichte werden aus Outbound übernommen.";
+    heroFrom.textContent = "XLSX";
+    heroText.textContent = "MEDLOG Train Composition hochladen. ISO-Codes werden vorerst unverändert aus der Quelle übernommen; fehlendes Gewicht wird mit 10.000 kg ergänzt.";
   } else {
     document.querySelector(".hero h2").textContent = "HWL-Ausgang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "HWL-Ladeliste hier ablegen";
