@@ -1382,6 +1382,13 @@ function downloadExcel() {
       ws["!cols"]=HELL_HEADERS.map((h,i)=>({wch:i===4?19:i===7?15:i===9?16:Math.min(Math.max(h.length+2,10),24)}));
       const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,SHEET_NAME);
       XLSX.writeFile(wb,"CTOS-TCM-IN-HWL "+parsedState.etaDate+".xlsx",{bookType:"xlsx",compression:true});
+    } else if (mode === "medInbound") {
+      const rows = makeMedlogRows(parsedState);
+      const ws = XLSX.utils.aoa_to_sheet([HEADERS, ...rows], { cellDates:false });
+      for (let r=2;r<=rows.length+1;r++){const eta=ws["E"+r];if(eta){eta.t="n";eta.z="dd.mm.yyyy hh:mm";} const ctr=ws["J"+r];if(ctr)ctr.t="s";}
+      ws["!cols"]=HEADERS.map((h,i)=>({wch:i===4?19:i===7?15:i===9?16:Math.min(Math.max(h.length+2,10),24)}));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,MED_SHEET_NAME);
+      XLSX.writeFile(wb,"CTOS-TCM-IN-MED "+parsedState.etaDate+".xlsx",{bookType:"xlsx",compression:true});
     } else {
       const rows = makeHwlOutboundRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([HWL_OUT_HEADERS, ...rows], { cellDates:false });
