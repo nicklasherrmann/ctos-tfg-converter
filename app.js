@@ -959,12 +959,12 @@ function renderResult(data) {
     subtitle = "Erkannte TFG-Exportdaten";
     rules = [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]];
   } else if (mode === "hellmann") {
-    previewLabel = data.unitCount + " Zeilen";
-    stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen erkannt",data.wagonCount],["Ladeeinheiten",data.unitCount]];
+    previewLabel = data.unitCount + " Ladeeinheiten";
+    stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen",data.wagonCount + " / 10"],["Ladeeinheiten",data.unitCount]];
     columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["SLOT",r=>r.slot],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["Gross",r=>formatNumber(r.gross)]];
     previewRows = data.entries;
-    subtitle = "Landshut → Osnabrück · Lehrte wurde ignoriert";
-    rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Wagen 7–10","vorbereitet"]];
+    subtitle = data.part2 ? "Landshut + Regensburg → Osnabrück" : "Landshut → Osnabrück · Wagen 7–10 vorbereitet";
+    rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Teil 2",data.part2 ? "ergänzt" : "offen"]];
   } else {
     previewLabel = "40 Verladeplätze";
     stats = [["Zugnummer","50020"],["ETD",data.date + " 20:00"],["Beladen",data.unitCount + " / 40"],["Nicht verladen",data.ignoredCount]];
@@ -989,17 +989,56 @@ function renderResult(data) {
     warnBox.classList.remove("hidden");
     el("statusIcon").className = "status-icon warn";
     el("statusIcon").textContent = "!";
-    el("resultTitle").textContent = mode === "hwlOutbound" ? "HWL-Ladeliste positionsgetreu verarbeitet" : "Datei verarbeitet – bitte Hinweise prüfen";
+    if (mode === "hwlOutbound") el("resultTitle").textContent = "HWL-Ladeliste positionsgetreu verarbeitet";
+    else if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt – Hinweise prüfen" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
+    else el("resultTitle").textContent = "Datei verarbeitet – bitte Hinweise prüfen";
   } else {
     warnBox.classList.add("hidden");
     el("statusIcon").className = "status-icon ok";
     el("statusIcon").textContent = "✓";
-    el("resultTitle").textContent = mode === "hellmann" ? "Osnabrück-Abschnitt erfolgreich verarbeitet" : "Datei erfolgreich verarbeitet";
+    if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
+    else el("resultTitle").textContent = "Datei erfolgreich verarbeitet";
   }
   el("resetBtn").textContent = "Andere Datei";
   showOnly(result);
+  renderHellmannPart2Control(data);
 }
 
+
+function renderHellmannPart2Control(data) {
+  const box = el("hellmannPart2");
+  if (!box) return;
+  if (mode !== "hellmann") {
+    box.classList.add("hidden");
+    return;
+  }
+
+  box.classList.remove("hidden", "error", "done");
+  const icon = box.querySelector(".hellmann-part2-icon");
+  const meta = el("hellmannPart2Meta");
+  const btn = el("hellmannPart2Btn");
+
+  if (data.part2) {
+    box.classList.add("done");
+    icon.textContent = "✓";
+    el("hellmannPart2Title").textContent = "Teil 2 ergänzt · Regensburg → Osnabrück";
+    el("hellmannPart2Text").textContent = data.part2.sourceName + " wurde auf die vorbereiteten Wagen 7–10 gelegt. ETA aus Teil 1 bleibt unverändert.";
+    btn.textContent = "Datei ersetzen";
+    const taraText = data.part2.taras?.length ? data.part2.taras.map(v => formatNumber(v) + " kg").join(" / ") : "aus Datei";
+    meta.innerHTML = [
+      ["Wagen", data.part2.wagonCount],
+      ["Ladeeinheiten", data.part2.unitCount],
+      ["Tara", taraText],
+      ["Datum Zusatzliste", data.part2.date || "–"]
+    ].map(([k,v]) => "<span>" + escapeHtml(k) + ": <b>" + escapeHtml(v) + "</b></span>").join("");
+  } else {
+    icon.textContent = "2";
+    el("hellmannPart2Title").textContent = "Teil 2 · Regensburg → Osnabrück";
+    el("hellmannPart2Text").textContent = "Optional die separate .xls/.xlsx-Liste ergänzen. Wagen 7–10 werden positionsgetreu gefüllt; Tara und Ladungsgewicht werden aus der Datei gelesen.";
+    btn.textContent = "Teil 2 hinzufügen";
+    meta.innerHTML = "<span>Wagen: <b>7–10</b></span><span>Datei: <b>.xls / .xlsx</b></span><span>Gross: <b>Tara + Ladungsgewicht</b></span>";
+  }
+}
 function formatNumber(n) {
   return new Intl.NumberFormat("de-DE").format(n);
 }
