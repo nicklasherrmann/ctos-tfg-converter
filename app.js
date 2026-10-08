@@ -1323,6 +1323,23 @@ function makeHellmannRows(data) {
   }
   return rows;
 }
+function makeMedlogRows(data) {
+  const eta = excelSerialAtTime(data.etaDate, 6);
+  return data.entries.map(e => {
+    const row = Object.fromEntries(HEADERS.map(h => [h, null]));
+    Object.assign(row, MED_FIXED, {
+      TRN_NO: data.trainNo,
+      ETA: eta,
+      WAG_SEQ_NO: e.wagonSeq,
+      WAG_NO: Number(e.wagonNo),
+      CTR_NO: e.ctrNo,
+      ISO: e.iso || null,
+      FE: e.fe || null,
+      GROSS: e.gross
+    });
+    return HEADERS.map(h => row[h]);
+  });
+}
 function makeHwlOutboundRows(data) {
   const etd = excelSerialAtTime(data.date, 20);
   return data.slots.map(slot => {
