@@ -152,6 +152,12 @@ function setupModeSwitcher() {
     .hellmann-part2.done{border-color:rgba(24,166,122,.25);background:rgba(24,166,122,.055)}
     .hellmann-part2.done .hellmann-part2-icon{background:rgba(24,166,122,.11);color:#15835f}
     .hellmann-part2.error{border-color:rgba(216,91,114,.25);background:rgba(216,91,114,.055)}
+    .hellmann-part2-drop{margin-top:14px;min-height:126px;border:1.5px dashed #b8c9d9;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:18px;transition:.18s ease;outline:none}
+    .hellmann-part2-drop:hover,.hellmann-part2-drop:focus,.hellmann-part2-drop.drag{border-color:#0b5cab;background:#f1f7fd;box-shadow:inset 0 0 0 1px rgba(11,92,171,.05)}
+    .hellmann-part2-drop strong{display:block;color:#15304e;font-size:13px}
+    .hellmann-part2-drop span{display:block;margin-top:5px;color:#7d8d9f;font-size:10px;line-height:1.45}
+    .hellmann-part2-drop .drop-symbol{width:34px;height:34px;margin:0 auto 9px;border-radius:8px;background:#eaf2fb;color:#0b5cab;display:grid;place-items:center;font-size:18px}
+    .hellmann-part2.done .hellmann-part2-drop{border-style:solid;border-color:rgba(24,166,122,.22);background:#fff}
     @media(max-width:760px){.hellmann-part2-head{align-items:stretch;flex-direction:column}.hellmann-part2-head .ghost-btn{width:100%}}
     @media(max-width:760px){.brand-grid,.mode-switch{grid-template-columns:1fr}.mode-shell{align-items:stretch;flex-direction:column}.brand-card{min-height:250px}.brand-intro{margin-top:30px}.brand-intro h2{font-size:42px}}
   `;
@@ -177,7 +183,7 @@ function setupModeSwitcher() {
   const part2 = document.createElement("div");
   part2.id = "hellmannPart2";
   part2.className = "hellmann-part2 hidden";
-  part2.innerHTML = '<div class="hellmann-part2-head"><div class="hellmann-part2-copy"><span class="hellmann-part2-icon">2</span><div><h4 id="hellmannPart2Title">Teil 2 · Regensburg → Osnabrück</h4><p id="hellmannPart2Text">Separate Wagenliste für Wagen 7–10 hinzufügen.</p></div></div><button id="hellmannPart2Btn" class="ghost-btn" type="button">Teil 2 hinzufügen</button></div><div id="hellmannPart2Meta" class="hellmann-part2-meta"></div><input id="hellmannPart2Input" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>';
+  part2.innerHTML = '<div class="hellmann-part2-head"><div class="hellmann-part2-copy"><span class="hellmann-part2-icon">2</span><div><h4 id="hellmannPart2Title">Teil 2 · Regensburg → Osnabrück</h4><p id="hellmannPart2Text">Separate Wagenliste für Wagen 7–10 hinzufügen.</p></div></div><button id="hellmannPart2Btn" class="ghost-btn" type="button">Datei auswählen</button></div><div id="hellmannPart2Drop" class="hellmann-part2-drop" tabindex="0" role="button"><div><div class="drop-symbol">↓</div><strong id="hellmannPart2DropTitle">Zusatzliste hier hineinziehen</strong><span id="hellmannPart2DropText">.xls oder .xlsx · auch direkt aus einer Mail, wenn der Browser den Anhang als Datei bereitstellt</span></div></div><div id="hellmannPart2Meta" class="hellmann-part2-meta"></div><input id="hellmannPart2Input" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>';
   document.querySelector(".result .actions").parentNode.insertBefore(part2, document.querySelector(".result .actions"));
   el("brandTFG").addEventListener("click", () => selectBrand("tfg"));
   el("brandHWL").addEventListener("click", () => selectBrand("hwl"));
@@ -190,6 +196,26 @@ function setupModeSwitcher() {
   el("hellmannPart2Input").addEventListener("change", () => {
     const file = el("hellmannPart2Input").files?.[0];
     if (file) handleHellmannSecondFile(file);
+  });
+  const part2Drop = el("hellmannPart2Drop");
+  ["dragenter","dragover"].forEach(evt => part2Drop.addEventListener(evt, e => {
+    e.preventDefault();
+    e.stopPropagation();
+    part2Drop.classList.add("drag");
+  }));
+  ["dragleave","drop"].forEach(evt => part2Drop.addEventListener(evt, e => {
+    e.preventDefault();
+    e.stopPropagation();
+    part2Drop.classList.remove("drag");
+  }));
+  part2Drop.addEventListener("drop", e => {
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleHellmannSecondFile(file);
+    else renderHellmannPart2Error("Der Browser hat aus dem Drop keine Datei erhalten. In diesem Fall bitte den Anhang anklicken oder kurz lokal speichern.");
+  });
+  part2Drop.addEventListener("click", () => el("hellmannPart2Input").click());
+  part2Drop.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el("hellmannPart2Input").click(); }
   });
 }
 
@@ -728,6 +754,7 @@ async function handleHellmannSecondFile(file) {
   const btn = el("hellmannPart2Btn");
   btn.disabled = true;
   btn.textContent = "Wird gelesen…";
+  if (el("hellmannPart2DropTitle")) el("hellmannPart2DropTitle").textContent = "Zusatzliste wird verarbeitet…";
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const part2 = parseHellmannSecondPart(bytes);
@@ -753,6 +780,8 @@ function renderHellmannPart2Error(message) {
   el("hellmannPart2Text").textContent = message;
   el("hellmannPart2Meta").innerHTML = "";
   el("hellmannPart2Btn").textContent = "Andere Datei wählen";
+  if (el("hellmannPart2DropTitle")) el("hellmannPart2DropTitle").textContent = "Andere Zusatzliste hineinziehen";
+  if (el("hellmannPart2DropText")) el("hellmannPart2DropText").textContent = message;
 }
 function normalizeHeader(value) {
   return clean(value)
@@ -1024,6 +1053,8 @@ function renderHellmannPart2Control(data) {
     el("hellmannPart2Title").textContent = "Teil 2 ergänzt · Regensburg → Osnabrück";
     el("hellmannPart2Text").textContent = data.part2.sourceName + " wurde auf die vorbereiteten Wagen 7–10 gelegt. ETA aus Teil 1 bleibt unverändert.";
     btn.textContent = "Datei ersetzen";
+    el("hellmannPart2DropTitle").textContent = "Andere Zusatzliste hineinziehen";
+    el("hellmannPart2DropText").textContent = data.part2.sourceName + " ist aktuell geladen · Drop ersetzt Teil 2";
     const taraText = data.part2.taras?.length ? data.part2.taras.map(v => formatNumber(v) + " kg").join(" / ") : "aus Datei";
     meta.innerHTML = [
       ["Wagen", data.part2.wagonCount],
@@ -1035,7 +1066,9 @@ function renderHellmannPart2Control(data) {
     icon.textContent = "2";
     el("hellmannPart2Title").textContent = "Teil 2 · Regensburg → Osnabrück";
     el("hellmannPart2Text").textContent = "Optional die separate .xls/.xlsx-Liste ergänzen. Wagen 7–10 werden positionsgetreu gefüllt; Tara und Ladungsgewicht werden aus der Datei gelesen.";
-    btn.textContent = "Teil 2 hinzufügen";
+    btn.textContent = "Datei auswählen";
+    el("hellmannPart2DropTitle").textContent = "Zusatzliste hier hineinziehen";
+    el("hellmannPart2DropText").textContent = ".xls oder .xlsx · auch direkt aus einer Mail, wenn der Browser den Anhang als Datei bereitstellt";
     meta.innerHTML = "<span>Wagen: <b>7–10</b></span><span>Datei: <b>.xls / .xlsx</b></span><span>Gross: <b>Tara + Ladungsgewicht</b></span>";
   }
 }
