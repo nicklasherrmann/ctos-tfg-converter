@@ -141,6 +141,18 @@ function setupModeSwitcher() {
     .mode-title{font-size:14px;font-weight:800}
     .mode-desc{font-size:11px;color:#77889a}
     .mode-btn::after{content:"→";grid-row:1/3;grid-column:3;color:#0b5cab;font-size:18px}
+    .hellmann-part2{margin:14px 0 0;padding:16px;border:1px solid #dbe4ed;border-radius:12px;background:#f8fbfe}
+    .hellmann-part2-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .hellmann-part2-copy{display:flex;align-items:flex-start;gap:12px}
+    .hellmann-part2-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:9px;background:#eaf2fb;color:#0b5cab;font-size:13px;font-weight:900;flex:0 0 auto}
+    .hellmann-part2 h4{margin:0;font-size:13px;color:#15304e}
+    .hellmann-part2 p{margin:4px 0 0;color:#74869a;font-size:11px;line-height:1.5}
+    .hellmann-part2-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+    .hellmann-part2-meta span{padding:6px 8px;border:1px solid #dbe4ed;border-radius:7px;background:#fff;color:#66788c;font-size:10px}
+    .hellmann-part2.done{border-color:rgba(24,166,122,.25);background:rgba(24,166,122,.055)}
+    .hellmann-part2.done .hellmann-part2-icon{background:rgba(24,166,122,.11);color:#15835f}
+    .hellmann-part2.error{border-color:rgba(216,91,114,.25);background:rgba(216,91,114,.055)}
+    @media(max-width:760px){.hellmann-part2-head{align-items:stretch;flex-direction:column}.hellmann-part2-head .ghost-btn{width:100%}}
     @media(max-width:760px){.brand-grid,.mode-switch{grid-template-columns:1fr}.mode-shell{align-items:stretch;flex-direction:column}.brand-card{min-height:250px}.brand-intro{margin-top:30px}.brand-intro h2{font-size:42px}}
   `;
   document.head.appendChild(style);
