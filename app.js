@@ -1149,6 +1149,13 @@ function renderResult(data) {
     previewRows = data.entries;
     subtitle = data.part2 ? "Landshut + Regensburg → Osnabrück" : "Landshut → Osnabrück · Wagen 7–10 vorbereitet";
     rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Teil 2",data.part2 ? "ergänzt" : "offen"]];
+  } else if (mode === "medInbound") {
+    previewLabel = data.unitCount + " Container";
+    stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 06:00"],["Wagen",data.wagonCount],["Container",data.unitCount]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)]];
+    previewRows = data.entries;
+    subtitle = "MEDLOG Outbound → CTOS Eingang";
+    rules = [["LINER","MED"],["ETA","+1 Tag · 06:00"],["ISO","aus Quelle"],["Fehlendes GROSS","10.000 kg"]];
   } else {
     previewLabel = "40 Verladeplätze";
     stats = [["Zugnummer","50020"],["ETD",data.date + " 20:00"],["Beladen",data.unitCount + " / 40"],["Nicht verladen",data.ignoredCount]];
