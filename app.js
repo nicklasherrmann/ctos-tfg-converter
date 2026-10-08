@@ -299,6 +299,8 @@ function reset() {
   el("previewBody").innerHTML = "";
   el("warnings").innerHTML = "";
   el("warnings").classList.add("hidden");
+  if (el("hellmannPart2Input")) el("hellmannPart2Input").value = "";
+  if (el("hellmannPart2")) el("hellmannPart2").classList.add("hidden");
   showOnly(dropzone);
 }
 
@@ -325,7 +327,7 @@ async function handleFile(file) {
       if (!parsed.trainNo) throw new Error("Keine Zugnummer/TrainID erkannt.");
       if (!parsed.date) throw new Error("Kein Versanddatum erkannt.");
       if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten für Landshut → Osnabrück erkannt.");
-      parsedState = { ...parsed, sourceName:file.name, mode };
+      parsedState = { ...parsed, sourceName:file.name, part1SourceName:file.name, part1Warnings:[...(parsed.warnings || [])], mode };
     } else {
       const parsed = parseHwlLadeliste(bytes);
       if (!parsed.date) throw new Error("Kein Datum in der HWL-Ladeliste erkannt.");
