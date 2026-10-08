@@ -141,8 +141,8 @@ function setupModeSwitcher() {
     .brand-logo-wrap img{display:block;max-width:82%;max-height:104px;object-fit:contain}
     .brand-card.hwl .brand-logo-wrap img{max-width:118px;max-height:118px}
     .med-wordmark{font-size:34px;font-weight:900;letter-spacing:-.045em;color:#0b5cab}
-    .brand-card.med .brand-logo-wrap{background:linear-gradient(145deg,#f9fbfd,#eef4f9)}
-    .brand-card.med .brand-logo-wrap img{max-width:82%;max-height:92px}
+    .brand-card.med .brand-logo-wrap{background:linear-gradient(145deg,#f9fbfd,#eef4f9);padding:8px 12px}
+    .brand-card.med .brand-logo-wrap img{width:100%;max-width:100%;max-height:124px;object-fit:contain;transform:scale(1.32)}
     .mode-switch.single{grid-template-columns:1fr;max-width:560px}
     .brand-card-copy{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:20px 4px 2px}
     .brand-card-copy strong{display:block;font-size:27px;letter-spacing:-.035em}
