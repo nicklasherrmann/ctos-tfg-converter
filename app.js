@@ -722,9 +722,6 @@ function mergeHellmannSecondPart(base, part2, sourceName) {
 
   const entries = base.entries.filter(e => e.wagonSeq <= 6).concat(part2.entries);
   const warnings = [...(base.part1Warnings || []), ...(part2.warnings || [])];
-  if (part2.date && base.etaDate && part2.date !== base.etaDate) {
-    warnings.push("Datum der Zusatzliste (" + part2.date + ") weicht vom ETA-Tag aus Teil 1 (" + base.etaDate + ") ab. ETA wurde nicht verändert.");
-  }
 
   return {
     ...base,
