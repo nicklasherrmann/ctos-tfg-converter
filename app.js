@@ -828,6 +828,122 @@ function normalizeHeader(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function medlogDateToGerman(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") {
+    const d = XLSX.SSF.parse_date_code(value);
+    return d ? pad2(d.d) + "." + pad2(d.m) + "." + d.y : null;
+  }
+  const text = clean(value);
+  let m = text.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return m[1] + "." + m[2] + "." + m[3];
+  m = text.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return m[1] + "." + m[2] + "." + m[3];
+  return null;
+}
+
+function parseMedlogInbound(bytes) {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  const sheetName = wb.SheetNames.find(n => normalizeHeader(n) === "outbound");
+  if (!sheetName) throw new Error("Das Tabellenblatt \"Outbound\" wurde nicht gefunden.");
+  const ws = wb.Sheets[sheetName];
+  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+  if (!matrix.length) throw new Error("Das Outbound-Tabellenblatt ist leer.");
+
+  let voyage = null;
+  let etdDate = null;
+  let headerRow = -1;
+  let indices = null;
+
+  for (let r = 0; r < Math.min(matrix.length, 40); r++) {
+    const row = matrix[r] || [];
+    const label = normalizeHeader(row[0]);
+    if (label === "voyage" && row[1] !== null && row[1] !== undefined) voyage = clean(row[1]);
+    if (label === "etd" && row[1] !== null && row[1] !== undefined) etdDate = medlogDateToGerman(row[1]);
+
+    const h = row.map(normalizeHeader);
+    const find = (...names) => h.findIndex(x => names.includes(x));
+    const candidate = {
+      seq: find("wagonposition"),
+      wagon: find("wagonnumber"),
+      slot: find("wagonslot"),
+      ctr: find("containernumber"),
+      iso: find("containertypeisocode"),
+      gross: find("grossweightkg"),
+      fe: find("fullempty")
+    };
+    if (candidate.seq >= 0 && candidate.wagon >= 0 && candidate.ctr >= 0 && candidate.iso >= 0 && candidate.gross >= 0 && candidate.fe >= 0) {
+      headerRow = r;
+      indices = candidate;
+      break;
+    }
+  }
+
+  if (headerRow < 0) throw new Error("Die MEDLOG-Spalten konnten im Outbound-Blatt nicht erkannt werden.");
+  if (!voyage) throw new Error("Keine MEDLOG-Voyage erkannt.");
+  const trainMatch = voyage.match(/\/\s*(\d{4,6})\b/) || voyage.match(/\b(\d{4,6})\b/);
+  if (!trainMatch) throw new Error("Aus der Voyage konnte keine Zugnummer abgeleitet werden.");
+  const trainNo = Number(trainMatch[1]);
+  if (!etdDate) throw new Error("Kein ETD-Datum im MEDLOG-Outbound-Blatt erkannt.");
+  const etaDate = addDaysToGermanDate(etdDate, 1);
+
+  let currentSeq = null;
+  let currentWagon = null;
+  let fallbackWeightCount = 0;
+  const entries = [];
+  const warnings = [];
+
+  for (let r = headerRow + 1; r < matrix.length; r++) {
+    const row = matrix[r] || [];
+    const seqValue = toNumber(row[indices.seq]);
+    if (seqValue !== null) currentSeq = Number(seqValue);
+
+    const wagonText = clean(row[indices.wagon]).replace(/\D/g, "");
+    if (wagonText) currentWagon = wagonText;
+
+    const ctrNo = clean(row[indices.ctr]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!ctrNo) continue;
+    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) {
+      warnings.push("Zeile " + (r + 1) + ": Containernummer " + ctrNo + " hat ein unerwartetes Format.");
+    }
+    if (currentSeq === null || !currentWagon) {
+      warnings.push("Zeile " + (r + 1) + ": " + ctrNo + " konnte keinem Wagen zugeordnet werden.");
+      continue;
+    }
+
+    const iso = clean(row[indices.iso]).toUpperCase();
+    const fe = clean(row[indices.fe]).toUpperCase();
+    let gross = toNumber(row[indices.gross]);
+    if (gross === null) {
+      gross = 10000;
+      fallbackWeightCount++;
+    }
+
+    entries.push({
+      wagonSeq: currentSeq,
+      wagonNo: currentWagon,
+      slot: indices.slot >= 0 ? toNumber(row[indices.slot]) : null,
+      ctrNo,
+      iso,
+      fe,
+      gross
+    });
+  }
+
+  if (!entries.length) throw new Error("Keine Container im MEDLOG-Outbound-Blatt erkannt.");
+  const wagonCount = new Set(entries.map(e => e.wagonNo)).size;
+
+  return {
+    trainNo,
+    etdDate,
+    etaDate,
+    entries,
+    wagonCount,
+    unitCount: entries.length,
+    fallbackWeightCount,
+    warnings
+  };
+}
 const OUTBOUND_COLUMNS = [
   { key:"bookNo", label:"Container Referenznummer", aliases:["containerreferenznummer","containerreferenznr","containerreferenz","containereferenznummer","containerref","icnummer","iknummer","iknr","ikno"] },
   { key:"billOfLading", label:"Kundenauftragsnummer", aliases:["kundenauftragsnummer","kundenauftragsnr","kundenauftrag"] },
