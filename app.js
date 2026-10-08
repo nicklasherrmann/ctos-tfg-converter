@@ -174,6 +174,11 @@ function setupModeSwitcher() {
     '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">Wagenliste PDF → TCM Excel</span></button>' +
     '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button></div>';
   panel.parentNode.insertBefore(shell, panel);
+  const part2 = document.createElement("div");
+  part2.id = "hellmannPart2";
+  part2.className = "hellmann-part2 hidden";
+  part2.innerHTML = '<div class="hellmann-part2-head"><div class="hellmann-part2-copy"><span class="hellmann-part2-icon">2</span><div><h4 id="hellmannPart2Title">Teil 2 · Regensburg → Osnabrück</h4><p id="hellmannPart2Text">Separate Wagenliste für Wagen 7–10 hinzufügen.</p></div></div><button id="hellmannPart2Btn" class="ghost-btn" type="button">Teil 2 hinzufügen</button></div><div id="hellmannPart2Meta" class="hellmann-part2-meta"></div><input id="hellmannPart2Input" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>';
+  document.querySelector(".result .actions").parentNode.insertBefore(part2, document.querySelector(".result .actions"));
   el("brandTFG").addEventListener("click", () => selectBrand("tfg"));
   el("brandHWL").addEventListener("click", () => selectBrand("hwl"));
   el("brandBack").addEventListener("click", showBrandLanding);
