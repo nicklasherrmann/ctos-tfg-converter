@@ -115,6 +115,7 @@ const heroFrom = document.querySelector(".hero-badge span:first-child");
 
 const TFG_LOGO_DATA = "https://www.transfracht.com/resource/blob/8748624/a6e0cac5cfbf5b88dd4f0cf7cb7342c4/TFG-data.jpg";
 const HWL_LOGO_DATA = "https://images.seeklogo.com/logo-png/38/1/hellmann-logo-png_seeklogo-387871.png";
+const MED_LOGO_DATA = "https://images.seeklogo.com/logo-png/34/1/medlog-transport-logistics-logo-png_seeklogo-349013.png";
 let mode = null;
 let activeBrand = null;
 
@@ -141,6 +142,7 @@ function setupModeSwitcher() {
     .brand-card.hwl .brand-logo-wrap img{max-width:118px;max-height:118px}
     .med-wordmark{font-size:34px;font-weight:900;letter-spacing:-.045em;color:#0b5cab}
     .brand-card.med .brand-logo-wrap{background:linear-gradient(145deg,#f9fbfd,#eef4f9)}
+    .brand-card.med .brand-logo-wrap img{max-width:82%;max-height:92px}
     .mode-switch.single{grid-template-columns:1fr;max-width:560px}
     .brand-card-copy{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:20px 4px 2px}
     .brand-card-copy strong{display:block;font-size:27px;letter-spacing:-.035em}
@@ -184,7 +186,7 @@ function setupModeSwitcher() {
   landing.innerHTML = '<div class="brand-intro"><div class="eyebrow">CTOS TOOL</div><h2>Partner auswählen.</h2><p>Wähle den gewünschten Verkehrspartner. Anschließend stehen dir die passenden Funktionen für Eingang und Ausgang zur Verfügung.</p></div>' +
     '<div class="brand-grid"><button id="brandTFG" class="brand-card" type="button"><div class="brand-logo-wrap"><img alt="TFG Transfracht" src="' + TFG_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>TFG</strong><span>Transfracht · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
     '<button id="brandHWL" class="brand-card hwl" type="button"><div class="brand-logo-wrap"><img alt="Hellmann Worldwide Logistics" src="' + HWL_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>HWL</strong><span>Hellmann · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
-    '<button id="brandMED" class="brand-card med" type="button"><div class="brand-logo-wrap"><span class="med-wordmark">MEDLOG</span></div><div class="brand-card-copy"><div><strong>MEDLOG</strong><span>MED · Eingang</span></div><span class="brand-arrow">→</span></div></button></div>';
+    '<button id="brandMED" class="brand-card med" type="button"><div class="brand-logo-wrap"><img alt="MEDLOG" src="' + MED_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>MEDLOG</strong><span>MED · Eingang</span></div><span class="brand-arrow">→</span></div></button></div>';
   document.querySelector(".hero").parentNode.insertBefore(landing, document.querySelector(".hero"));
 
   const shell = document.createElement("div");
