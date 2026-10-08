@@ -171,7 +171,7 @@ function setupModeSwitcher() {
   shell.innerHTML = '<button id="brandBack" class="ghost-btn mode-back" type="button">← Partner</button><div class="mode-switch">' +
     '<button id="modeInbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span></button>' +
     '<button id="modeOutbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
-    '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">Wagenliste PDF → TCM Excel</span></button>' +
+    '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">PDF + Zusatzliste → TCM Excel</span></button>' +
     '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button></div>';
   panel.parentNode.insertBefore(shell, panel);
   const part2 = document.createElement("div");
@@ -186,6 +186,11 @@ function setupModeSwitcher() {
   el("modeOutbound").addEventListener("click", () => setMode("outbound"));
   el("modeHellmann").addEventListener("click", () => setMode("hellmann"));
   el("modeHwlOutbound").addEventListener("click", () => setMode("hwlOutbound"));
+  el("hellmannPart2Btn").addEventListener("click", () => el("hellmannPart2Input").click());
+  el("hellmannPart2Input").addEventListener("change", () => {
+    const file = el("hellmannPart2Input").files?.[0];
+    if (file) handleHellmannSecondFile(file);
+  });
 }
 
 function showBrandLanding() {
@@ -243,7 +248,7 @@ function applyModeUi() {
     document.querySelector(".working strong").textContent = "Hellmann-PDF wird ausgewertet…";
     document.querySelector(".working span").textContent = "Nur Landshut → Osnabrück wird verarbeitet; Lehrte wird ignoriert.";
     heroFrom.textContent = "PDF";
-    heroText.textContent = "Hellmann-Wagenliste hochladen. Wagen 7–10 werden bereits als leere Plätze vorbereitet.";
+    heroText.textContent = "Zuerst die Landshut-PDF hochladen. Anschließend kann die separate Regensburg-Liste für Wagen 7–10 direkt ergänzt werden.";
   } else {
     document.querySelector(".hero h2").textContent = "HWL-Ausgang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "HWL-Ladeliste hier ablegen";
