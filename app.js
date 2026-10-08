@@ -393,6 +393,9 @@ async function handleFile(file) {
       if (!parsed.date) throw new Error("Kein Versanddatum erkannt.");
       if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten für Landshut → Osnabrück erkannt.");
       parsedState = { ...parsed, sourceName:file.name, part1SourceName:file.name, part1Warnings:[...(parsed.warnings || [])], mode };
+    } else if (mode === "medInbound") {
+      const parsed = parseMedlogInbound(bytes);
+      parsedState = { ...parsed, sourceName:file.name, mode };
     } else {
       const parsed = parseHwlLadeliste(bytes);
       if (!parsed.date) throw new Error("Kein Datum in der HWL-Ladeliste erkannt.");
@@ -407,7 +410,7 @@ async function handleFile(file) {
 
 function showError(message) {
   const title = errorBox.querySelector("h3");
-  if (title) title.textContent = (mode === "outbound" || mode === "hwlOutbound") ? "Excel-Datei konnte nicht verarbeitet werden" : "PDF konnte nicht verarbeitet werden";
+  if (title) title.textContent = (mode === "outbound" || mode === "hwlOutbound" || mode === "medInbound") ? "Excel-Datei konnte nicht verarbeitet werden" : "PDF konnte nicht verarbeitet werden";
   el("errorMessage").textContent = message;
   showOnly(errorBox);
 }
