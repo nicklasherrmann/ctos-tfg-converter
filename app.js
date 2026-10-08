@@ -559,6 +559,201 @@ function addDaysToGermanDate(dateString, days) {
   const d = new Date(Date.UTC(p.year, p.month - 1, p.day + days));
   return String(d.getUTCDate()).padStart(2,"0") + "." + String(d.getUTCMonth()+1).padStart(2,"0") + "." + d.getUTCFullYear();
 }
+function parseHellmannSecondPart(bytes) {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("Die Zusatzliste enthält kein Tabellenblatt.");
+  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+  if (!matrix.length) throw new Error("Die Zusatzliste ist leer.");
+
+  let headerRow = -1;
+  let idx = null;
+  for (let r = 0; r < Math.min(matrix.length, 30); r++) {
+    const headers = (matrix[r] || []).map(normalizeHeader);
+    const find = test => headers.findIndex(test);
+    const candidate = {
+      ctr: find(h => h.includes("lecontainer") && h.includes("prefix")),
+      bl: find(h => h === "bl"),
+      tara: find(h => h.includes("tara")),
+      load: find(h => h.includes("ladgew")),
+      wagon: find(h => h.includes("wagennummer")),
+      nhm: find(h => h.includes("nhmnummer") || h === "nhm"),
+      destination: find(h => h.includes("bestbahnhof")),
+      length: find(h => h.startsWith("lelg")),
+      type: find(h => h.startsWith("legat")),
+      height: find(h => h.includes("lehohe") || h.includes("lehoehe"))
+    };
+    if (candidate.ctr >= 0 && candidate.bl >= 0 && candidate.tara >= 0 && candidate.load >= 0 && candidate.wagon >= 0 && candidate.nhm >= 0) {
+      headerRow = r;
+      idx = candidate;
+      break;
+    }
+  }
+  if (headerRow < 0) throw new Error("Die Spalten der Regensburg-Zusatzliste konnten nicht erkannt werden.");
+
+  let sourceDate = null;
+  for (let r = 0; r < Math.min(matrix.length, headerRow + 1) && !sourceDate; r++) {
+    for (const value of (matrix[r] || [])) {
+      const m = clean(value).match(/\b(\d{2}\.\d{2}\.\d{4})\b/);
+      if (m) { sourceDate = m[1]; break; }
+    }
+  }
+
+  const warnings = [];
+  const groups = new Map();
+  const wagonOrder = [];
+  const taras = new Set();
+
+  for (let r = headerRow + 1; r < matrix.length; r++) {
+    const row = matrix[r] || [];
+    const ctrNo = clean(row[idx.ctr]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) continue;
+
+    const wagonNo = clean(row[idx.wagon]).replace(/\D/g, "");
+    if (!/^\d{12}$/.test(wagonNo)) {
+      warnings.push("Zeile " + (r + 1) + ": Wagennummer zu " + ctrNo + " konnte nicht erkannt werden.");
+      continue;
+    }
+
+    const tara = toNumber(row[idx.tara]);
+    const loadWeight = toNumber(row[idx.load]);
+    if (tara === null || loadWeight === null) {
+      warnings.push("Zeile " + (r + 1) + ": Tara oder Ladungsgewicht bei " + ctrNo + " fehlt.");
+      continue;
+    }
+    taras.add(tara);
+
+    const bl = clean(row[idx.bl]).toUpperCase();
+    const nhm = clean(row[idx.nhm]).replace(/\D/g, "");
+    let fe = bl === "B" ? "F" : bl === "L" ? "E" : "";
+    if (!fe) fe = nhm === "990200" ? "F" : nhm === "993200" ? "E" : "";
+    if (!fe) warnings.push("Zeile " + (r + 1) + ": B/L bzw. NHM bei " + ctrNo + " nicht eindeutig.");
+
+    if (!groups.has(wagonNo)) {
+      if (wagonOrder.length >= 4) throw new Error("Die Zusatzliste enthält mehr als vier Wagen. Erwartet werden Wagen 7–10.");
+      groups.set(wagonNo, []);
+      wagonOrder.push(wagonNo);
+    }
+    const list = groups.get(wagonNo);
+    if (list.length >= 4) throw new Error("Wagen " + wagonNo + " enthält mehr als vier Ladeeinheiten.");
+
+    if (idx.destination >= 0) {
+      const destination = normalizeHeader(row[idx.destination]);
+      if (destination && !destination.includes("osna")) warnings.push("Zeile " + (r + 1) + ": Ziel ist nicht Osnabrück bei " + ctrNo + ".");
+    }
+
+    list.push({
+      ctrNo,
+      wagonNo,
+      tara,
+      loadWeight,
+      gross: tara + loadWeight,
+      fe,
+      nhm,
+      bl,
+      sourceRow: r + 1
+    });
+  }
+
+  if (!wagonOrder.length) throw new Error("Keine Ladeeinheiten in der Regensburg-Zusatzliste erkannt.");
+
+  const wagons = new Map();
+  const entries = [];
+  wagonOrder.forEach((wagonNo, wagonIndex) => {
+    const seq = 7 + wagonIndex;
+    const slots = new Map();
+    groups.get(wagonNo).forEach((item, i) => {
+      const entry = { ...item, wagonSeq:seq, slot:i + 1 };
+      slots.set(i + 1, entry);
+      entries.push(entry);
+    });
+    wagons.set(seq, { wagonNo, slots });
+  });
+
+  if (wagonOrder.length !== 4) warnings.push("Es wurden " + wagonOrder.length + " statt 4 Zusatzwagen erkannt; übrige Wagenplätze bleiben vorbereitet.");
+  for (const [seq, wagon] of wagons) {
+    if (wagon.slots.size !== 4) warnings.push("Wagen " + seq + " (" + wagon.wagonNo + ") enthält " + wagon.slots.size + " statt 4 Ladeeinheiten.");
+  }
+
+  return {
+    date: sourceDate,
+    entries,
+    wagons,
+    wagonCount: wagons.size,
+    unitCount: entries.length,
+    taras: [...taras].sort((a,b) => a-b),
+    warnings
+  };
+}
+
+function mergeHellmannSecondPart(base, part2, sourceName) {
+  const wagons = new Map();
+  for (let seq = 1; seq <= 6; seq++) {
+    const wagon = base.wagons.get(seq);
+    if (wagon) wagons.set(seq, wagon);
+  }
+  for (const [seq, wagon] of part2.wagons) wagons.set(seq, wagon);
+
+  const entries = base.entries.filter(e => e.wagonSeq <= 6).concat(part2.entries);
+  const warnings = [...(base.part1Warnings || []), ...(part2.warnings || [])];
+  if (part2.date && base.etaDate && part2.date !== base.etaDate) {
+    warnings.push("Datum der Zusatzliste (" + part2.date + ") weicht vom ETA-Tag aus Teil 1 (" + base.etaDate + ") ab. ETA wurde nicht verändert.");
+  }
+
+  return {
+    ...base,
+    sourceName: (base.part1SourceName || base.sourceName) + " + " + sourceName,
+    entries,
+    wagons,
+    wagonCount: new Set(entries.map(e => e.wagonNo)).size,
+    unitCount: entries.length,
+    warnings,
+    part2: {
+      sourceName,
+      date: part2.date,
+      wagonCount: part2.wagonCount,
+      unitCount: part2.unitCount,
+      taras: part2.taras
+    }
+  };
+}
+
+async function handleHellmannSecondFile(file) {
+  if (mode !== "hellmann" || !parsedState) return;
+  if (!file || !/\.(xls|xlsx)$/i.test(file.name)) {
+    renderHellmannPart2Error("Bitte die Regensburg-Liste als .xls oder .xlsx auswählen.");
+    return;
+  }
+
+  const btn = el("hellmannPart2Btn");
+  btn.disabled = true;
+  btn.textContent = "Wird gelesen…";
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const part2 = parseHellmannSecondPart(bytes);
+    parsedState = mergeHellmannSecondPart(parsedState, part2, file.name);
+    el("hellmannPart2Input").value = "";
+    renderResult(parsedState);
+  } catch (err) {
+    console.error(err);
+    renderHellmannPart2Error(err?.message || "Die Zusatzliste konnte nicht verarbeitet werden.");
+  } finally {
+    btn.disabled = false;
+    if (mode === "hellmann" && parsedState?.part2) btn.textContent = "Datei ersetzen";
+    else if (mode === "hellmann") btn.textContent = "Teil 2 hinzufügen";
+  }
+}
+
+function renderHellmannPart2Error(message) {
+  const box = el("hellmannPart2");
+  box.classList.remove("hidden", "done");
+  box.classList.add("error");
+  box.querySelector(".hellmann-part2-icon").textContent = "!";
+  el("hellmannPart2Title").textContent = "Teil 2 konnte nicht verarbeitet werden";
+  el("hellmannPart2Text").textContent = message;
+  el("hellmannPart2Meta").innerHTML = "";
+  el("hellmannPart2Btn").textContent = "Andere Datei wählen";
+}
 function normalizeHeader(value) {
   return clean(value)
     .toLowerCase()
