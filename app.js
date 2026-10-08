@@ -70,6 +70,18 @@ const HELL_FIXED = {
   CATEGORY: "I"
 };
 
+const MED_FIXED = {
+  TRN_OPER_CODE: "MEDLOG",
+  TRN_DEST_STN: "DEOSN",
+  R_D: "R",
+  TRN_LENGTH: 700,
+  WAG_TYPE: 6264,
+  LINER: "MED",
+  CUSTOMER_ID: "MED",
+  CATEGORY: "I"
+};
+const MED_SHEET_NAME = "Tabelle1";
+
 
 
 const HWL_OUT_HEADERS = [
@@ -120,13 +132,16 @@ function setupModeSwitcher() {
     .brand-intro .eyebrow{margin-bottom:14px}
     .brand-intro h2{margin:0;font-size:clamp(42px,5.4vw,68px);line-height:.98;letter-spacing:-.055em;color:#102033}
     .brand-intro p{max-width:620px;margin:20px auto 0;color:#67788b;font-size:15px;line-height:1.65}
-    .brand-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;max-width:1020px;margin:0 auto}
+    .brand-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;max-width:1120px;margin:0 auto}
     .brand-card{position:relative;min-height:300px;padding:24px;border:1px solid #dbe3ec;border-radius:18px;background:#fff;color:#102033;display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;text-align:left;box-shadow:0 14px 40px rgba(31,52,77,.08);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;overflow:hidden}
     .brand-card::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:#0b5cab;opacity:.95}
     .brand-card:hover{transform:translateY(-4px);border-color:#aac4df;box-shadow:0 22px 56px rgba(31,52,77,.14)}
     .brand-logo-wrap{height:158px;border-radius:12px;background:#f7f9fb;border:1px solid #e7edf3;display:flex;align-items:center;justify-content:center;padding:22px 30px;overflow:hidden}
     .brand-logo-wrap img{display:block;max-width:82%;max-height:104px;object-fit:contain}
     .brand-card.hwl .brand-logo-wrap img{max-width:118px;max-height:118px}
+    .med-wordmark{font-size:34px;font-weight:900;letter-spacing:-.045em;color:#0b5cab}
+    .brand-card.med .brand-logo-wrap{background:linear-gradient(145deg,#f9fbfd,#eef4f9)}
+    .mode-switch.single{grid-template-columns:1fr;max-width:560px}
     .brand-card-copy{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:20px 4px 2px}
     .brand-card-copy strong{display:block;font-size:27px;letter-spacing:-.035em}
     .brand-card-copy span{display:block;margin-top:5px;color:#7d8d9f;font-size:12px}
@@ -159,7 +174,7 @@ function setupModeSwitcher() {
     .hellmann-part2-drop .drop-symbol{width:34px;height:34px;margin:0 auto 9px;border-radius:8px;background:#eaf2fb;color:#0b5cab;display:grid;place-items:center;font-size:18px}
     .hellmann-part2.done .hellmann-part2-drop{border-style:solid;border-color:rgba(24,166,122,.22);background:#fff}
     @media(max-width:760px){.hellmann-part2-head{align-items:stretch;flex-direction:column}.hellmann-part2-head .ghost-btn{width:100%}}
-    @media(max-width:760px){.brand-grid,.mode-switch{grid-template-columns:1fr}.mode-shell{align-items:stretch;flex-direction:column}.brand-card{min-height:250px}.brand-intro{margin-top:30px}.brand-intro h2{font-size:42px}}
+    @media(max-width:900px){.brand-grid{grid-template-columns:1fr}.mode-switch{grid-template-columns:1fr}.mode-shell{align-items:stretch;flex-direction:column}.brand-card{min-height:250px}.brand-intro{margin-top:30px}.brand-intro h2{font-size:42px}}
   `;
   document.head.appendChild(style);
 
@@ -168,7 +183,8 @@ function setupModeSwitcher() {
   landing.className = "brand-landing";
   landing.innerHTML = '<div class="brand-intro"><div class="eyebrow">CTOS TOOL</div><h2>Partner auswählen.</h2><p>Wähle den gewünschten Verkehrspartner. Anschließend stehen dir die passenden Funktionen für Eingang und Ausgang zur Verfügung.</p></div>' +
     '<div class="brand-grid"><button id="brandTFG" class="brand-card" type="button"><div class="brand-logo-wrap"><img alt="TFG Transfracht" src="' + TFG_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>TFG</strong><span>Transfracht · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
-    '<button id="brandHWL" class="brand-card hwl" type="button"><div class="brand-logo-wrap"><img alt="Hellmann Worldwide Logistics" src="' + HWL_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>HWL</strong><span>Hellmann · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button></div>';
+    '<button id="brandHWL" class="brand-card hwl" type="button"><div class="brand-logo-wrap"><img alt="Hellmann Worldwide Logistics" src="' + HWL_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>HWL</strong><span>Hellmann · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
+    '<button id="brandMED" class="brand-card med" type="button"><div class="brand-logo-wrap"><span class="med-wordmark">MEDLOG</span></div><div class="brand-card-copy"><div><strong>MEDLOG</strong><span>MED · Eingang</span></div><span class="brand-arrow">→</span></div></button></div>';
   document.querySelector(".hero").parentNode.insertBefore(landing, document.querySelector(".hero"));
 
   const shell = document.createElement("div");
@@ -178,7 +194,8 @@ function setupModeSwitcher() {
     '<button id="modeInbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span></button>' +
     '<button id="modeOutbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
     '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">PDF + Zusatzliste → TCM Excel</span></button>' +
-    '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button></div>';
+    '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
+    '<button id="modeMedInbound" data-brand="med" class="mode-btn" type="button"><span class="mode-kicker">MED</span><span class="mode-title">Eingang</span><span class="mode-desc">Train Composition → TCM Excel</span></button></div>';
   panel.parentNode.insertBefore(shell, panel);
   const part2 = document.createElement("div");
   part2.id = "hellmannPart2";
@@ -187,11 +204,13 @@ function setupModeSwitcher() {
   document.querySelector(".result .actions").parentNode.insertBefore(part2, document.querySelector(".result .actions"));
   el("brandTFG").addEventListener("click", () => selectBrand("tfg"));
   el("brandHWL").addEventListener("click", () => selectBrand("hwl"));
+  el("brandMED").addEventListener("click", () => selectBrand("med"));
   el("brandBack").addEventListener("click", showBrandLanding);
   el("modeInbound").addEventListener("click", () => setMode("inbound"));
   el("modeOutbound").addEventListener("click", () => setMode("outbound"));
   el("modeHellmann").addEventListener("click", () => setMode("hellmann"));
   el("modeHwlOutbound").addEventListener("click", () => setMode("hwlOutbound"));
+  el("modeMedInbound").addEventListener("click", () => setMode("medInbound"));
   el("hellmannPart2Btn").addEventListener("click", () => el("hellmannPart2Input").click());
   el("hellmannPart2Input").addEventListener("change", () => {
     const file = el("hellmannPart2Input").files?.[0];
