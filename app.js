@@ -155,6 +155,7 @@ function setupModeSwitcher() {
     .brand-card.ctos .brand-logo-wrap{padding:12px 18px;background:#fff}
     .brand-card.ctos .brand-logo-wrap img{width:100%;max-width:210px;max-height:126px;object-fit:contain}
     .mode-switch.single{grid-template-columns:1fr;max-width:560px}
+    .mode-switch.triple{grid-template-columns:repeat(3,minmax(0,1fr))}
     .brand-card-copy{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:20px 4px 2px}
     .brand-card-copy strong{display:block;font-size:27px;letter-spacing:-.035em}
     .brand-card-copy span{display:block;margin-top:5px;color:#7d8d9f;font-size:12px}
@@ -302,6 +303,7 @@ function selectBrand(brand) {
   panel.classList.remove("hidden");
   document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("hidden", btn.dataset.brand !== brand));
   document.querySelector(".mode-switch").classList.toggle("single", brand === "med" || brand === "ctos");
+  document.querySelector(".mode-switch").classList.toggle("triple", brand === "tfg");
   const titles = { tfg:"TFG Converter", hwl:"HWL Converter", med:"MEDLOG Converter", ctos:"CTOS Dispoliste" };
   const subtitles = { tfg:"TFG Import & Export", hwl:"HWL Import & Export", med:"MEDLOG Eingang", ctos:"COREOR Erstellung" };
   document.querySelector(".brand h1").textContent = titles[brand] || "CTOS Converter";
