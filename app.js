@@ -369,7 +369,7 @@ function reset() {
   showOnly(dropzone);
 }
 
-async async function handleFile(file) {
+async function handleFile(file) {
   const expectsPdf = mode === "inbound" || mode === "hellmann";
   const isPdf = !!file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
   const isExcel = !!file && /\.(xlsx|xls)$/i.test(file.name);
