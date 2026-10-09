@@ -394,7 +394,7 @@ function reset() {
   showOnly(dropzone);
 }
 
-async function handleFile(file) {
+async async function handleFile(file) {
   const expectsPdf = mode === "inbound" || mode === "hellmann";
   const isPdf = !!file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
   const isExcel = !!file && /\.(xlsx|xls)$/i.test(file.name);
@@ -430,6 +430,9 @@ async function handleFile(file) {
     } else if (mode === "medInbound") {
       const parsed = parseMedlogInbound(bytes);
       parsedState = { ...parsed, sourceName:file.name, mode };
+    } else if (mode === "coreorRelease") {
+      const parsed = parseCoreorReleaseSource(bytes);
+      parsedState = { ...parsed, sourceName:file.name, mode };
     } else if (mode === "hwlOutbound") {
       const parsed = isPdf ? await parseHwlOutboundPdf(bytes) : parseHwlLadeliste(bytes);
       if (!parsed.date) throw new Error("Kein Datum in der HWL-Datei erkannt.");
@@ -446,7 +449,7 @@ function showError(message) {
   const title = errorBox.querySelector("h3");
   if (title) {
     if (mode === "hwlOutbound") title.textContent = "HWL-Datei konnte nicht verarbeitet werden";
-    else if (mode === "outbound" || mode === "medInbound") title.textContent = "Excel-Datei konnte nicht verarbeitet werden";
+    else if (mode === "outbound" || mode === "medInbound" || mode === "coreorRelease") title.textContent = "Excel-Datei konnte nicht verarbeitet werden";
     else title.textContent = "PDF konnte nicht verarbeitet werden";
   }
   el("errorMessage").textContent = message;
