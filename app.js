@@ -977,6 +977,200 @@ function normalizeHeader(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function parseTfgTcmSource(bytes) {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  if (!ws) throw new Error("Die TCM-IN enthält kein Tabellenblatt.");
+  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+  if (!matrix.length) throw new Error("Die TCM-IN ist leer.");
+
+  let headerRow = -1;
+  let idx = null;
+  for (let r = 0; r < Math.min(matrix.length, 10); r++) {
+    const h = (matrix[r] || []).map(normalizeHeader);
+    const candidate = {
+      seq:h.indexOf("wagseqno"),
+      wagon:h.indexOf("wagno"),
+      wagType:h.indexOf("wagtype"),
+      ctr:h.indexOf("ctrno"),
+      train:h.indexOf("trnno"),
+      eta:h.indexOf("eta"),
+      fpod:h.indexOf("fpod"),
+      book:h.indexOf("bookno")
+    };
+    if (candidate.seq >= 0 && candidate.wagon >= 0 && candidate.wagType >= 0 && candidate.ctr >= 0) {
+      headerRow = r;
+      idx = candidate;
+      break;
+    }
+  }
+  if (headerRow < 0) throw new Error("Die TCM-IN-Spalten WAG_SEQ_NO, WAG_NO, WAG_TYPE und CTR_NO wurden nicht gefunden.");
+
+  const headers = [...matrix[headerRow]];
+  const preamble = matrix.slice(0, headerRow).map(row => [...row]);
+  const rows = matrix.slice(headerRow + 1).map(row => [...row]);
+  const dataRows = rows.filter(row => clean(row[idx.ctr]));
+  if (!dataRows.length) throw new Error("Keine Containerzeilen in der TCM-IN erkannt.");
+
+  const trainNo = idx.train >= 0 ? toNumber(dataRows.find(r => r[idx.train] !== null && r[idx.train] !== undefined)?.[idx.train]) : null;
+  const etaValue = idx.eta >= 0 ? dataRows.find(r => r[idx.eta] !== null && r[idx.eta] !== undefined)?.[idx.eta] : null;
+  const date = normalizeDate(etaValue);
+  const wagonCount = new Set(dataRows.map(r => clean(r[idx.wagon]).replace(/\D/g,"")).filter(Boolean)).size;
+
+  const entries = dataRows.map(row => ({
+    wagonSeq:row[idx.seq],
+    wagonNo:clean(row[idx.wagon]).replace(/\D/g,""),
+    wagType:row[idx.wagType],
+    ctrNo:clean(row[idx.ctr]),
+    fpod:idx.fpod >= 0 ? clean(row[idx.fpod]) : "",
+    bookNo:idx.book >= 0 ? row[idx.book] : null
+  }));
+
+  return {
+    sheetName, headerRow, headers, preamble, rows, indices:idx,
+    entries, unitCount:entries.length, wagonCount, trainNo, date,
+    warnings:[], finalized:false
+  };
+}
+
+function mitveanWagType(axles, lup) {
+  const known = {
+    "6-263":6263, "6-267":6267, "4-197":4197, "4-196":4196,
+    "2-138":2138, "2-140":2140, "4-259":4260
+  };
+  const key = String(axles) + "-" + String(lup);
+  return { value:known[key] || Number(String(axles) + String(lup).padStart(3,"0")), known:!!known[key] };
+}
+
+function groupPdfRows(items, tolerance = 2.6) {
+  const rows = [];
+  const sorted = [...items].sort((a,b) => b.y - a.y || a.x - b.x);
+  for (const item of sorted) {
+    let row = rows.find(r => Math.abs(r.y - item.y) <= tolerance);
+    if (!row) { row = { y:item.y, items:[] }; rows.push(row); }
+    row.items.push(item);
+  }
+  return rows
+    .sort((a,b) => b.y - a.y)
+    .map(r => r.items.sort((a,b) => a.x - b.x).map(i => i.text).join(" ").replace(/\s+/g," ").trim());
+}
+
+async function parseMitveanPdf(bytes) {
+  const pdf = await pdfjsLib.getDocument({ data:bytes }).promise;
+  const wagons = new Map();
+  const warnings = [];
+  const trainNos = new Set();
+  let maxLnr = 0;
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+    const page = await pdf.getPage(pageNo);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({
+      text:i.str.trim(), x:Number(i.transform[4]), y:Number(i.transform[5])
+    }));
+    const lines = groupPdfRows(items, 2.8);
+    for (const line of lines) {
+      for (const tm of line.matchAll(/\bZ(\d{5})\/\d+\b/g)) trainNos.add(Number(tm[1]));
+      const m = line.match(/^\s*(\d{1,3})\s+(\d{4})\s+(\d{4})\s+(\d{3})\s*-\s*(\d)\s+(\d)\s+[A-Z]\s+(\d{3})\b/);
+      if (!m) continue;
+      const lnr = Number(m[1]);
+      const wagonNo = m[2] + m[3] + m[4] + m[5];
+      const axles = Number(m[6]);
+      const lup = Number(m[7]);
+      const wt = mitveanWagType(axles, lup);
+      if (!wt.known) warnings.push("Wagen " + wagonNo + ": WAG_TYPE " + wt.value + " wurde aus Achsen/LüP abgeleitet (" + axles + "/" + lup + ").");
+      if (wagons.has(wagonNo)) warnings.push("Wagen " + wagonNo + " kommt mehrfach in der MITVEAN-Liste vor.");
+      wagons.set(wagonNo, { lnr, wagonNo, axles, lup, wagType:wt.value });
+      maxLnr = Math.max(maxLnr, lnr);
+    }
+  }
+
+  if (!wagons.size) throw new Error("Keine Wagenzeilen in der MITVEAN-Liste Gleisinhalt erkannt.");
+  const trainNo = trainNos.size === 1 ? [...trainNos][0] : null;
+  if (trainNos.size > 1) warnings.push("Mehrere Zugnummern in der MITVEAN-PDF erkannt: " + [...trainNos].join(", ") + ".");
+  return { wagons, wagonCount:wagons.size, maxLnr, trainNo, warnings };
+}
+
+function finalizeTfgTcm(base, mitvean, sourceName) {
+  if (base.trainNo && mitvean.trainNo && Number(base.trainNo) !== Number(mitvean.trainNo)) {
+    throw new Error("Zugnummer passt nicht: TCM " + base.trainNo + ", MITVEAN " + mitvean.trainNo + ".");
+  }
+  const idx = base.indices;
+  const currentWagons = new Set(base.rows.filter(r => clean(r[idx.ctr])).map(r => clean(r[idx.wagon]).replace(/\D/g,"")).filter(Boolean));
+  const missing = [...currentWagons].filter(w => !mitvean.wagons.has(w));
+  if (missing.length) throw new Error("Diese TCM-Wagen fehlen in der MITVEAN-Liste: " + missing.join(", ") + ".");
+
+  const decorated = base.rows.map((sourceRow, originalIndex) => {
+    const row = [...sourceRow];
+    const ctrNo = clean(row[idx.ctr]);
+    if (!ctrNo) return { row, originalIndex, sortSeq:Number.POSITIVE_INFINITY };
+    const wagonNo = clean(row[idx.wagon]).replace(/\D/g,"");
+    const info = mitvean.wagons.get(wagonNo);
+    const newSeq = mitvean.maxLnr - info.lnr + 1;
+    row[idx.seq] = newSeq;
+    row[idx.wagType] = info.wagType;
+    return { row, originalIndex, sortSeq:newSeq };
+  });
+
+  decorated.sort((a,b) => a.sortSeq - b.sortSeq || a.originalIndex - b.originalIndex);
+  const rows = decorated.map(x => x.row);
+  const dataRows = rows.filter(r => clean(r[idx.ctr]));
+  const entries = dataRows.map(row => ({
+    wagonSeq:row[idx.seq],
+    wagonNo:clean(row[idx.wagon]).replace(/\D/g,""),
+    wagType:row[idx.wagType],
+    ctrNo:clean(row[idx.ctr]),
+    fpod:idx.fpod >= 0 ? clean(row[idx.fpod]) : "",
+    bookNo:idx.book >= 0 ? row[idx.book] : null
+  }));
+
+  return {
+    ...base,
+    rows, entries, unitCount:entries.length,
+    wagonCount:new Set(entries.map(e => e.wagonNo)).size,
+    warnings:[...(base.warnings || []), ...(mitvean.warnings || [])],
+    sourceName:(base.baseSourceName || base.sourceName) + " + " + sourceName,
+    finalized:true,
+    mitvean:{ sourceName, wagonCount:mitvean.wagonCount, maxLnr:mitvean.maxLnr, trainNo:mitvean.trainNo }
+  };
+}
+
+async function handleTfgMitveanFile(file) {
+  if (mode !== "tfgFinalize" || !parsedState) return;
+  const isPdf = file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
+  if (!isPdf) { renderTfgMitveanError("Bitte die MITVEAN Liste Gleisinhalt als PDF auswählen."); return; }
+  const btn = el("tfgMitveanBtn");
+  btn.disabled = true;
+  btn.textContent = "Wird gelesen…";
+  if (el("tfgMitveanDropTitle")) el("tfgMitveanDropTitle").textContent = "MITVEAN-PDF wird verarbeitet…";
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const mitvean = await parseMitveanPdf(bytes);
+    parsedState = finalizeTfgTcm(parsedState, mitvean, file.name);
+    el("tfgMitveanInput").value = "";
+    renderResult(parsedState);
+  } catch (err) {
+    console.error(err);
+    renderTfgMitveanError(err?.message || "Die MITVEAN-PDF konnte nicht verarbeitet werden.");
+  } finally {
+    btn.disabled = false;
+    if (mode === "tfgFinalize") btn.textContent = parsedState?.finalized ? "PDF ersetzen" : "PDF auswählen";
+  }
+}
+
+function renderTfgMitveanError(message) {
+  const box = el("tfgMitvean");
+  box.classList.remove("hidden", "done");
+  box.classList.add("error");
+  box.querySelector(".hellmann-part2-icon").textContent = "!";
+  el("tfgMitveanTitle").textContent = "MITVEAN-Liste konnte nicht verarbeitet werden";
+  el("tfgMitveanText").textContent = message;
+  el("tfgMitveanMeta").innerHTML = "";
+  el("tfgMitveanBtn").textContent = "Andere PDF wählen";
+  el("tfgMitveanDropTitle").textContent = "Andere MITVEAN-PDF hineinziehen";
+  el("tfgMitveanDropText").textContent = message;
+}
 function mapCoreorIso(lengthValue, heightValue, typeValue, ctrNo) {
   if (COREOR_ISO_OVERRIDES[ctrNo]) return COREOR_ISO_OVERRIDES[ctrNo];
   const length = clean(lengthValue);
