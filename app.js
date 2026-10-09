@@ -1090,6 +1090,105 @@ function parseLadeliste(bytes) {
   };
 }
 
+async function parseHwlOutboundPdf(bytes) {
+  const pdf = await pdfjsLib.getDocument({ data:bytes }).promise;
+  if (!pdf.numPages) throw new Error("Die PDF enthält keine Seite.");
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale:1 });
+  const tc = await page.getTextContent();
+  const items = tc.items
+    .filter(i => i.str && i.str.trim())
+    .map(i => ({ text:i.str.trim(), x:Number(i.transform[4]), y:Number(i.transform[5]) }));
+
+  const pageText = items.map(i => i.text).join(" ").toUpperCase();
+  if (!pageText.includes("OSNABR") || !pageText.includes("VOLLGUT")) {
+    throw new Error("Der Hellmann-Brückenplan konnte nicht eindeutig erkannt werden.");
+  }
+
+  let date = null;
+  for (const item of items) {
+    const m = item.text.match(/\b(\d{2}\.\d{2}\.\d{4})\b/);
+    if (m) { date = m[1]; break; }
+  }
+  if (!date) throw new Error("Kein Datum im Hellmann-Brückenplan erkannt.");
+
+  // Feste Zeilenpositionen des Hellmann-Brückenplans, relativ zur Seitenhöhe.
+  // Dadurch bleiben auch leere Plätze positionsgetreu erhalten.
+  const rowRatios = [
+    0.92711,0.90378,0.87802,0.85469,0.82893,0.80560,0.77984,0.75529,
+    0.72166,0.69999,0.67423,0.65090,0.62514,0.60181,0.57605,0.55272,
+    0.52696,0.50363,0.47787,0.45454,0.42878,0.40545,0.37969,0.35635
+  ];
+  const cells = new Map();
+  const unmatched = [];
+
+  for (const item of items) {
+    if (!/^\d{5}$/.test(item.text)) continue;
+    const xRatio = item.x / viewport.width;
+    const side = xRatio < 0.16 ? "L" : (xRatio > 0.45 && xRatio < 0.60 ? "R" : null);
+    if (!side) continue;
+
+    const yRatio = item.y / viewport.height;
+    let bestRow = 0;
+    let bestDistance = Infinity;
+    rowRatios.forEach((ratio, index) => {
+      const distance = Math.abs(ratio - yRatio);
+      if (distance < bestDistance) { bestDistance = distance; bestRow = index; }
+    });
+    if (bestDistance > 0.013) {
+      unmatched.push(item.text);
+      continue;
+    }
+    cells.set(side + bestRow, item.text);
+  }
+
+  const slots = [];
+  let position = 1;
+  const addPdfSlot = (side, rowIndex, area) => {
+    const digits = cells.get(side + rowIndex) || "";
+    const ctrNo = digits ? "CCPD" + digits.padStart(7, "0") : "";
+    slots.push({
+      position:position++,
+      area,
+      sourceRow:rowIndex + 1,
+      sourceColumn:side === "L" ? "PDF-L" : "PDF-R",
+      sourceLabel:"PDF · " + (side === "L" ? "links" : "rechts") + " · Zeile " + (rowIndex + 1),
+      wbNo:digits,
+      ctrNo
+    });
+  };
+
+  for (let r = 0; r < 8; r++) addPdfSlot("L", r, "REG");
+  for (let r = 0; r < 8; r++) addPdfSlot("R", r, "REG");
+  for (let r = 8; r < 24; r++) addPdfSlot("L", r, "LDH");
+  for (let r = 8; r < 16; r++) addPdfSlot("R", r, "LDH");
+
+  const ignored = [];
+  for (let r = 16; r < 24; r++) {
+    const extra = cells.get("R" + r);
+    if (extra) ignored.push(extra);
+  }
+
+  const warnings = [];
+  if (unmatched.length) warnings.push(unmatched.length + " WB-Nummer(n) konnten keiner PDF-Zeile sicher zugeordnet werden.");
+  if (pdf.numPages > 1) warnings.push("Die PDF hat mehrere Seiten; für den Brückenplan wurde Seite 1 verwendet.");
+
+  return {
+    trainNo:50020,
+    date,
+    slots,
+    entries:slots,
+    unitCount:slots.filter(s => s.ctrNo).length,
+    slotCount:40,
+    regLoaded:slots.filter(s => s.area === "REG" && s.ctrNo).length,
+    ldhLoaded:slots.filter(s => s.area === "LDH" && s.ctrNo).length,
+    emptySlots:slots.filter(s => !s.ctrNo).length,
+    ignoredCount:ignored.length,
+    ignoredUnits:ignored,
+    sourceType:"pdf",
+    warnings
+  };
+}
 function parseHwlLadeliste(bytes) {
   const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
   const ws = wb.Sheets[wb.SheetNames[0]];
