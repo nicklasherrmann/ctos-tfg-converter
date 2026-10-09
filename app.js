@@ -369,10 +369,19 @@ function reset() {
   showOnly(dropzone);
 }
 
-async function handleFile(file) {
+async async function handleFile(file) {
   const expectsPdf = mode === "inbound" || mode === "hellmann";
-  if (expectsPdf && (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")))) return showError("Bitte eine PDF-Datei auswählen.");
-  if (!expectsPdf && (!file || !/\.(xlsx|xls)$/i.test(file.name))) return showError("Bitte eine Excel-Datei (.xlsx oder .xls) auswählen.");
+  const isPdf = !!file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
+  const isExcel = !!file && /\.(xlsx|xls)$/i.test(file.name);
+
+  if (mode === "hwlOutbound") {
+    if (!isPdf && !isExcel) return showError("Bitte eine Excel-Datei (.xlsx/.xls) oder einen PDF-Brückenplan auswählen.");
+  } else if (expectsPdf) {
+    if (!isPdf) return showError("Bitte eine PDF-Datei auswählen.");
+  } else if (!isExcel) {
+    return showError("Bitte eine Excel-Datei (.xlsx oder .xls) auswählen.");
+  }
+
   showOnly(working);
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -396,9 +405,9 @@ async function handleFile(file) {
     } else if (mode === "medInbound") {
       const parsed = parseMedlogInbound(bytes);
       parsedState = { ...parsed, sourceName:file.name, mode };
-    } else {
-      const parsed = parseHwlLadeliste(bytes);
-      if (!parsed.date) throw new Error("Kein Datum in der HWL-Ladeliste erkannt.");
+    } else if (mode === "hwlOutbound") {
+      const parsed = isPdf ? await parseHwlOutboundPdf(bytes) : parseHwlLadeliste(bytes);
+      if (!parsed.date) throw new Error("Kein Datum in der HWL-Datei erkannt.");
       parsedState = { ...parsed, sourceName:file.name, mode };
     }
     renderResult(parsedState);
@@ -410,7 +419,11 @@ async function handleFile(file) {
 
 function showError(message) {
   const title = errorBox.querySelector("h3");
-  if (title) title.textContent = (mode === "outbound" || mode === "hwlOutbound" || mode === "medInbound") ? "Excel-Datei konnte nicht verarbeitet werden" : "PDF konnte nicht verarbeitet werden";
+  if (title) {
+    if (mode === "hwlOutbound") title.textContent = "HWL-Datei konnte nicht verarbeitet werden";
+    else if (mode === "outbound" || mode === "medInbound") title.textContent = "Excel-Datei konnte nicht verarbeitet werden";
+    else title.textContent = "PDF konnte nicht verarbeitet werden";
+  }
   el("errorMessage").textContent = message;
   showOnly(errorBox);
 }
