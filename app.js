@@ -317,14 +317,16 @@ function setMode(nextMode) {
     hellmann:"modeHellmann",
     hwlOutbound:"modeHwlOutbound",
     medInbound:"modeMedInbound",
-    coreorRelease:"modeCoreorRelease"
+    coreorRelease:"modeCoreorRelease",
+    tfgFinalize:"modeTfgFinalize"
   };
-  ["modeInbound","modeOutbound","modeHellmann","modeHwlOutbound","modeMedInbound","modeCoreorRelease"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
+  ["modeInbound","modeOutbound","modeTfgFinalize","modeHellmann","modeHwlOutbound","modeMedInbound","modeCoreorRelease"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
   reset();
   applyModeUi();
 }
 
 function applyModeUi() {
+  downloadBtn.querySelector("span").textContent = mode === "tfgFinalize" ? "Finale TCM erstellen" : "Excel erstellen";
   const expectsPdf = mode === "inbound" || mode === "hellmann";
   fileInput.accept = mode === "hwlOutbound" ? ".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : (expectsPdf ? ".pdf,application/pdf" : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel");
   if (mode === "inbound") {
@@ -343,6 +345,14 @@ function applyModeUi() {
     document.querySelector(".working span").textContent = "Container, Zielterminals und Exportdaten werden erkannt.";
     heroFrom.textContent = "XLSX";
     heroText.textContent = "TFG-Ladeliste hochladen, Exportdaten prüfen und die fertige TFG-Exportdatei herunterladen.";
+  } else if (mode === "tfgFinalize") {
+    document.querySelector(".hero h2").textContent = "TFG-TCM finalisieren.";
+    document.querySelector(".dropzone h3").textContent = "TCM-IN Vorher hier ablegen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · danach MITVEAN Liste Gleisinhalt als PDF";
+    document.querySelector(".working strong").textContent = "TCM-IN wird eingelesen…";
+    document.querySelector(".working span").textContent = "Die vorhandenen Containerdaten bleiben unverändert; Schritt 2 ergänzt Wagenfolge und WAG_TYPE.";
+    heroFrom.textContent = "XLSX + PDF";
+    heroText.textContent = "Zuerst die bestehende TCM-IN laden. Danach die MITVEAN-Wagenliste hinzufügen; nur WAG_SEQ_NO und WAG_TYPE werden angepasst.";
   } else if (mode === "hellmann") {
     document.querySelector(".hero h2").textContent = "HWL-Eingang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "Hellmann-Wagenliste hier ablegen";
