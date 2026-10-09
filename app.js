@@ -1644,6 +1644,20 @@ function makeMedlogRows(data) {
     return HEADERS.map(h => row[h]);
   });
 }
+function makeCoreorReleaseRows(data) {
+  return data.entries.map(e => [
+    e.ctrNo,
+    e.iso || null,
+    e.fe || null,
+    e.releaseOrder ?? null,
+    e.liner || null,
+    "TFG",
+    e.billOfLading ?? null,
+    null,
+    e.comment ?? null,
+    null,null,null,null,null,null,null,null,null,null,null
+  ]);
+}
 function makeHwlOutboundRows(data) {
   const etd = excelSerialAtTime(data.date, 20);
   return data.slots.map(slot => {
@@ -1693,6 +1707,18 @@ function downloadExcel() {
       ws["!cols"]=HEADERS.map((h,i)=>({wch:i===4?19:i===7?15:i===9?16:Math.min(Math.max(h.length+2,10),24)}));
       const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,MED_SHEET_NAME);
       XLSX.writeFile(wb,"CTOS-TCM-IN-MED "+parsedState.etaDate+".xlsx",{bookType:"xlsx",compression:true});
+    } else if (mode === "coreorRelease") {
+      const rows = makeCoreorReleaseRows(parsedState);
+      const ws = XLSX.utils.aoa_to_sheet([COREOR_RELEASE_HEADERS, ...rows], { cellDates:false });
+      for (let r=2;r<=rows.length+1;r++){
+        const ctr=ws["A"+r]; if(ctr) ctr.t="s";
+        const release=ws["D"+r]; if(release && typeof release.v === "string") release.t="s";
+        const bol=ws["G"+r]; if(bol && typeof bol.v === "string") bol.t="s";
+        const comment=ws["I"+r]; if(comment && typeof comment.v === "string") comment.t="s";
+      }
+      ws["!cols"]=COREOR_RELEASE_HEADERS.map((h,i)=>({wch:i===0?16:i===3?18:i===6?22:i===8?16:Math.min(Math.max(h.length+2,10),22)}));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,COREOR_RELEASE_SHEET_NAME);
+      XLSX.writeFile(wb,"Coreor_Release.xlsx",{bookType:"xlsx",compression:true});
     } else {
       const rows = makeHwlOutboundRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([HWL_OUT_HEADERS, ...rows], { cellDates:false });
