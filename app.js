@@ -1451,6 +1451,13 @@ function renderResult(data) {
     previewRows = data.entries;
     subtitle = "MEDLOG Outbound → CTOS Eingang";
     rules = [["LINER","MED"],["ETA","+1 Tag · 06:00"],["ISO","aus Quelle"],["Fehlendes GROSS","10.000 kg"]];
+  } else if (mode === "coreorRelease") {
+    previewLabel = data.unitCount + " Container";
+    stats = [["Container",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Ausgabe","COREOR Release"]];
+    columns = [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["I/E",r=>r.ie],["FE",r=>r.fe],["RELEASE_ORDER",r=>r.releaseOrder],["LINER",r=>r.liner],["BILL_OF_LADING",r=>r.billOfLading]];
+    previewRows = data.entries;
+    subtitle = "CTOS-Dispoliste → COREOR Release";
+    rules = [["IMP","FE F · Release = IK.NR"],["EXP","FE E · Release = PICKUP REF."],["CUSTOMER","TFG"],["COMMENTS","IK.NR"]];
   } else {
     previewLabel = "40 Verladeplätze";
     stats = [["Zugnummer","50020"],["ETD",data.date + " 20:00"],["Beladen",data.unitCount + " / 40"],["Nicht verladen",data.ignoredCount]];
@@ -1476,6 +1483,7 @@ function renderResult(data) {
     el("statusIcon").className = "status-icon warn";
     el("statusIcon").textContent = "!";
     if (mode === "hwlOutbound") el("resultTitle").textContent = "HWL-Ladeliste positionsgetreu verarbeitet";
+    else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release erstellt – Hinweise prüfen";
     else if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt – Hinweise prüfen" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
     else el("resultTitle").textContent = "Datei verarbeitet – bitte Hinweise prüfen";
   } else {
@@ -1483,6 +1491,7 @@ function renderResult(data) {
     el("statusIcon").className = "status-icon ok";
     el("statusIcon").textContent = "✓";
     if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
+    else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release bereit";
     else el("resultTitle").textContent = "Datei erfolgreich verarbeitet";
   }
   el("resetBtn").textContent = "Andere Datei";
