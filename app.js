@@ -38,12 +38,7 @@ const OUT_FIXED = { TRN_NO: 50418, CATEGORY: "E", LINER: "TFG", CUSTOMER_ID: "TF
 
 const DESTINATION_MAP = {
   "CT 2": "CT2E",
-  "CT 4": "CT4E",
-  "EUK EKOM": "EUK",
-  "HHL BK": "CTB",
-  "HHL CTA": "CTA",
-  "HHL TCT": "TCT",
-  "JWP WHV": "JWP"
+  "CT 4": "CT4B"
 };
 
 const OUT_SHEET_NAME = "COPARN-Export-Example-RBS";
