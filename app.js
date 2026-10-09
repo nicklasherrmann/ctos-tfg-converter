@@ -869,6 +869,127 @@ function normalizeHeader(value) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function mapCoreorIso(lengthValue, heightValue, typeValue, ctrNo) {
+  if (COREOR_ISO_OVERRIDES[ctrNo]) return COREOR_ISO_OVERRIDES[ctrNo];
+  const length = clean(lengthValue);
+  const height = clean(heightValue);
+  const type = clean(typeValue).toUpperCase();
+  if (length === "40" && height === "96" && type === "HC") return "45G1";
+  if (length === "40" && height === "96" && (type === "RFHC" || type === "RF")) return "45R1";
+  if (length === "20" && height === "86" && type === "DC") return "22G1";
+  if (length === "20" && type === "RF") return "22R1";
+  return "";
+}
+
+function deriveCoreorReleaseLiner(ie, reeder, special) {
+  const flow = clean(ie).toUpperCase();
+  const line = normalizeHeader(reeder);
+  const note = normalizeHeader(special);
+  if (flow === "IMP") return "TFG";
+  if (flow !== "EXP") return "";
+  if (line.includes("hapag")) return "HAP";
+  if (line.includes("evergreen")) return "TFG";
+  if (line === "cma") {
+    if (note.includes("stationaryatctos")) return "TFG";
+    if (note.includes("tomorrowsinboundtrain") || note.includes("nor")) return "HAP";
+  }
+  return "TFG";
+}
+
+function parseCoreorReleaseSource(bytes) {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("Die Dispoliste enthält kein Tabellenblatt.");
+  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+  if (!matrix.length) throw new Error("Die Dispoliste ist leer.");
+
+  let headerRow = -1;
+  let idx = null;
+  for (let r = 0; r < Math.min(matrix.length, 20); r++) {
+    const h = (matrix[r] || []).map(normalizeHeader);
+    const find = (...names) => h.findIndex(x => names.includes(x));
+    const candidate = {
+      ik: find("iknr"),
+      customerRef: find("kundenref"),
+      ie: find("ie"),
+      length: find("la"),
+      height: find("ho"),
+      type: find("cttyp"),
+      ctr: find("ctnr"),
+      reeder: find("reeder"),
+      special: find("besonderheiten"),
+      pickupRef: find("pickupref")
+    };
+    if (candidate.ik >= 0 && candidate.customerRef >= 0 && candidate.ie >= 0 && candidate.length >= 0 && candidate.type >= 0 && candidate.ctr >= 0 && candidate.pickupRef >= 0) {
+      headerRow = r;
+      idx = candidate;
+      break;
+    }
+  }
+  if (headerRow < 0) throw new Error("Die benötigten Spalten der CTOS-Dispoliste konnten nicht erkannt werden.");
+
+  const entries = [];
+  const warnings = [];
+  let importCount = 0;
+  let exportCount = 0;
+
+  for (let r = headerRow + 1; r < matrix.length; r++) {
+    const row = matrix[r] || [];
+    const ctrNo = clean(row[idx.ctr]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!ctrNo) continue;
+
+    const ie = clean(row[idx.ie]).toUpperCase();
+    const ikNo = row[idx.ik] === null || row[idx.ik] === undefined || row[idx.ik] === "" ? null : row[idx.ik];
+    const pickupRef = row[idx.pickupRef] === null || row[idx.pickupRef] === undefined || row[idx.pickupRef] === "" ? null : row[idx.pickupRef];
+    const customerRef = row[idx.customerRef] === null || row[idx.customerRef] === undefined || row[idx.customerRef] === "" ? null : row[idx.customerRef];
+    const reeder = idx.reeder >= 0 ? clean(row[idx.reeder]) : "";
+    const special = idx.special >= 0 ? clean(row[idx.special]) : "";
+    const iso = mapCoreorIso(row[idx.length], idx.height >= 0 ? row[idx.height] : null, row[idx.type], ctrNo);
+
+    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) warnings.push("Zeile " + (r + 1) + ": Containernummer " + ctrNo + " hat ein unerwartetes Format.");
+    if (!iso) warnings.push("Zeile " + (r + 1) + ": ISO konnte für " + ctrNo + " nicht aus LA/HO/CT.TYP abgeleitet werden.");
+
+    let fe = "";
+    let releaseOrder = null;
+    if (ie === "IMP") {
+      fe = "F";
+      releaseOrder = ikNo;
+      importCount++;
+    } else if (ie === "EXP") {
+      fe = "E";
+      releaseOrder = pickupRef;
+      exportCount++;
+    } else {
+      warnings.push("Zeile " + (r + 1) + ": I/E ist bei " + ctrNo + " weder IMP noch EXP.");
+    }
+
+    if (releaseOrder === null || releaseOrder === "") warnings.push("Zeile " + (r + 1) + ": RELEASE_ORDER fehlt bei " + ctrNo + ".");
+
+    entries.push({
+      ctrNo,
+      iso,
+      fe,
+      releaseOrder,
+      liner:deriveCoreorReleaseLiner(ie, reeder, special),
+      customer:"TFG",
+      billOfLading:customerRef,
+      comment:ikNo,
+      ie,
+      reeder,
+      special,
+      sourceRow:r + 1
+    });
+  }
+
+  if (!entries.length) throw new Error("Keine Containerzeilen in der CTOS-Dispoliste erkannt.");
+  return {
+    entries,
+    unitCount:entries.length,
+    importCount,
+    exportCount,
+    warnings
+  };
+}
 function medlogDateToGerman(value) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") {
