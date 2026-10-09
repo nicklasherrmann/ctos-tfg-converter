@@ -429,6 +429,9 @@ function reset() {
   el("warnings").classList.add("hidden");
   if (el("hellmannPart2Input")) el("hellmannPart2Input").value = "";
   if (el("hellmannPart2")) el("hellmannPart2").classList.add("hidden");
+  if (el("tfgMitveanInput")) el("tfgMitveanInput").value = "";
+  if (el("tfgMitvean")) el("tfgMitvean").classList.add("hidden");
+  downloadBtn.disabled = false;
   showOnly(dropzone);
 }
 
@@ -471,6 +474,9 @@ async function handleFile(file) {
     } else if (mode === "coreorRelease") {
       const parsed = parseCoreorReleaseSource(bytes);
       parsedState = { ...parsed, sourceName:file.name, mode };
+    } else if (mode === "tfgFinalize") {
+      const parsed = parseTfgTcmSource(bytes);
+      parsedState = { ...parsed, sourceName:file.name, baseSourceName:file.name, mode };
     } else if (mode === "hwlOutbound") {
       const parsed = isPdf ? await parseHwlOutboundPdf(bytes) : parseHwlLadeliste(bytes);
       if (!parsed.date) throw new Error("Kein Datum in der HWL-Datei erkannt.");
@@ -487,7 +493,7 @@ function showError(message) {
   const title = errorBox.querySelector("h3");
   if (title) {
     if (mode === "hwlOutbound") title.textContent = "HWL-Datei konnte nicht verarbeitet werden";
-    else if (mode === "outbound" || mode === "medInbound" || mode === "coreorRelease") title.textContent = "Excel-Datei konnte nicht verarbeitet werden";
+    else if (mode === "outbound" || mode === "medInbound" || mode === "coreorRelease" || mode === "tfgFinalize") title.textContent = "Excel-Datei konnte nicht verarbeitet werden";
     else title.textContent = "PDF konnte nicht verarbeitet werden";
   }
   el("errorMessage").textContent = message;
