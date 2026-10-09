@@ -1305,10 +1305,10 @@ function renderResult(data) {
   } else {
     previewLabel = "40 Verladeplätze";
     stats = [["Zugnummer","50020"],["ETD",data.date + " 20:00"],["Beladen",data.unitCount + " / 40"],["Nicht verladen",data.ignoredCount]];
-    columns = [["PLATZ",r=>r.position],["BEREICH",r=>r.area],["QUELLE",r=>r.sourceColumn + r.sourceRow],["WB-NR",r=>r.wbNo],["CTR_NO",r=>r.ctrNo],["STATUS",r=>r.ctrNo ? "verladen" : "frei"]];
+    columns = [["PLATZ",r=>r.position],["BEREICH",r=>r.area],["QUELLE",r=>r.sourceLabel || (r.sourceColumn + r.sourceRow)],["WB-NR",r=>r.wbNo],["CTR_NO",r=>r.ctrNo],["STATUS",r=>r.ctrNo ? "verladen" : "frei"]];
     previewRows = data.slots;
-    subtitle = "40 feste Plätze · REG und LDH bleiben positionsgetreu";
-    rules = [["TRN_NO","50020"],["ETD","20:00"],["GROSS","12000"],["Überhang","ignoriert"]];
+    subtitle = (data.sourceType === "pdf" ? "PDF-Brückenplan" : "Excel-Ladeliste") + " · 40 feste Plätze · REG und LDH bleiben positionsgetreu";
+    rules = [["TRN_NO","50020"],["ETD","20:00"],["GROSS","12000"],["Quelle",data.sourceType === "pdf" ? "PDF" : "Excel"],["Überhang","ignoriert"]];
   }
 
   el("previewCount").textContent = previewLabel;
