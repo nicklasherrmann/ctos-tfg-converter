@@ -1736,6 +1736,13 @@ function renderResult(data) {
     previewRows = data.entries;
     subtitle = "Erkannte TFG-Exportdaten";
     rules = [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]];
+  } else if (mode === "tfgFinalize") {
+    previewLabel = data.unitCount + " Container";
+    stats = [["Zugnummer",data.trainNo || "–"],["Wagen",data.wagonCount],["Container",data.unitCount],["Status",data.finalized ? "finalisiert" : "Wagenliste offen"]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["WAG_TYPE",r=>r.wagType ?? ""],["CTR_NO",r=>r.ctrNo],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo ?? ""]];
+    previewRows = data.entries;
+    subtitle = data.finalized ? "TCM-IN + MITVEAN · finale Wagenreihenfolge" : "TCM-IN Vorher · MITVEAN-Wagenliste noch hinzufügen";
+    rules = [["Änderungen","nur WAG_SEQ_NO + WAG_TYPE"],["Reihenfolge","MITVEAN rückwärts"],["Restliche TCM-Felder","unverändert"]];
   } else if (mode === "hellmann") {
     previewLabel = data.unitCount + " Ladeeinheiten";
     stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen",data.wagonCount + " / 10"],["Ladeeinheiten",data.unitCount]];
@@ -1782,6 +1789,7 @@ function renderResult(data) {
     el("statusIcon").className = "status-icon warn";
     el("statusIcon").textContent = "!";
     if (mode === "hwlOutbound") el("resultTitle").textContent = "HWL-Ladeliste positionsgetreu verarbeitet";
+    else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert – Hinweise prüfen" : "TCM geladen – MITVEAN-Wagenliste fehlt";
     else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release erstellt – Hinweise prüfen";
     else if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt – Hinweise prüfen" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
     else el("resultTitle").textContent = "Datei verarbeitet – bitte Hinweise prüfen";
@@ -1790,15 +1798,52 @@ function renderResult(data) {
     el("statusIcon").className = "status-icon ok";
     el("statusIcon").textContent = "✓";
     if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
+    else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert" : "TCM geladen – MITVEAN-Wagenliste fehlt";
     else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release bereit";
     else el("resultTitle").textContent = "Datei erfolgreich verarbeitet";
   }
   el("resetBtn").textContent = "Andere Datei";
+  downloadBtn.disabled = mode === "tfgFinalize" && !data.finalized;
   showOnly(result);
   renderHellmannPart2Control(data);
+  renderTfgMitveanControl(data);
 }
 
 
+function renderTfgMitveanControl(data) {
+  const box = el("tfgMitvean");
+  if (!box) return;
+  if (mode !== "tfgFinalize") { box.classList.add("hidden"); return; }
+
+  box.classList.remove("hidden", "error", "done");
+  const icon = box.querySelector(".hellmann-part2-icon");
+  const meta = el("tfgMitveanMeta");
+  const btn = el("tfgMitveanBtn");
+
+  if (data.finalized && data.mitvean) {
+    box.classList.add("done");
+    icon.textContent = "✓";
+    el("tfgMitveanTitle").textContent = "MITVEAN-Wagenliste übernommen";
+    el("tfgMitveanText").textContent = "WAG_SEQ_NO wurde nach der physischen Wagenliste rückwärts neu vergeben und WAG_TYPE ergänzt. Alle übrigen TCM-Felder bleiben unverändert.";
+    btn.textContent = "PDF ersetzen";
+    el("tfgMitveanDropTitle").textContent = "Andere MITVEAN-PDF hineinziehen";
+    el("tfgMitveanDropText").textContent = data.mitvean.sourceName + " ist aktuell geladen";
+    meta.innerHTML = [
+      ["MITVEAN-Wagen", data.mitvean.wagonCount],
+      ["Zug", data.mitvean.trainNo || data.trainNo || "–"],
+      ["TCM-Container", data.unitCount],
+      ["Geändert", "WAG_SEQ_NO + WAG_TYPE"]
+    ].map(([k,v]) => "<span>" + escapeHtml(k) + ": <b>" + escapeHtml(v) + "</b></span>").join("");
+  } else {
+    icon.textContent = "2";
+    el("tfgMitveanTitle").textContent = "Schritt 2 · MITVEAN-Wagenliste";
+    el("tfgMitveanText").textContent = "Jetzt die PDF \"Liste Gleisinhalt\" hinzufügen. Das Tool matched die Wagennummern, dreht die physische Wagenreihenfolge und ergänzt den WAG_TYPE.";
+    btn.textContent = "PDF auswählen";
+    el("tfgMitveanDropTitle").textContent = "MITVEAN-PDF hier hineinziehen";
+    el("tfgMitveanDropText").textContent = "Liste Gleisinhalt · alle vorhandenen Containerdaten bleiben unverändert";
+    meta.innerHTML = "<span>Schritt 1: <b>TCM geladen</b></span><span>Schritt 2: <b>Wagenliste PDF</b></span>";
+  }
+}
 function renderHellmannPart2Control(data) {
   const box = el("hellmannPart2");
   if (!box) return;
