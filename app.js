@@ -505,12 +505,17 @@ async function parseElischPdf(bytes) {
       if (!leNo) continue;
       candidateRows++;
 
-      const book = pick(330, 402, /^\d{10}$/);
+      // Manche Elisch-PDFs verschmelzen Ref-Nr. und Versandbahnhof zu einem
+      // einzigen PDF.js-Textobjekt, z. B. "4254015001HAMBURG-WH".
+      // Deshalb akzeptieren wir die 10-stellige Ref-Nr. auch am Anfang eines
+      // längeren Textobjekts.
+      const bookItem = pick(330, 470, /^\d{10}(?:\D|$)/);
+      const bookMatch = bookItem?.text.match(/^(\d{10})/);
       const bl = pick(460, 480, /^[BL]$/);
       const gross = pick(480, 530, /^\d{3,6}$/);
       const wagon = pick(0, 90, /^\d{12}$/);
 
-      if (!book || !bl || !gross) {
+      if (!bookMatch || !bl || !gross) {
         warnings.push(`Seite ${pageNo}: ${prefix.text}${leNo.text} konnte nicht vollständig gelesen werden.`);
         continue;
       }
@@ -534,7 +539,7 @@ async function parseElischPdf(bytes) {
         ctrNo: `${prefix.text}${leNo.text}`, // bewusst String → führende Null bleibt erhalten
         fe: bl.text === "B" ? "F" : "E",
         gross: Number(gross.text),
-        bookNo: Number(book.text)
+        bookNo: Number(bookMatch[1])
       });
     }
   }
