@@ -509,18 +509,20 @@ async function parseElischPdf(bytes) {
       candidateRows++;
 
       const sortedLine = [...line].sort((a,b) => a.x - b.x);
+      const rowText = sortedLine.map(i => i.text).join(" ").replace(/\s+/g, " ").trim();
 
-      // Ref-Nr. kann als ein Objekt, mit Versandbahnhof verschmolzen oder in
-      // mehrere Objekte geteilt sein. Deshalb wird der komplette Ref-Bereich
-      // zusammengesetzt und anschließend die erste 10-stellige Nummer gelesen.
+      // Ref-Nr. zuerst positionsbasiert, danach als Fallback aus der kompletten
+      // Tabellenzeile. Das deckt auch "4254015001HAMBURG-WH" sicher ab.
       const refZone = sortedLine
         .filter(i => i.x >= 320 && i.x < 462)
         .map(i => i.text)
         .join("")
         .replace(/\s+/g, "");
-      const bookMatch = refZone.match(/(\d{10})/);
+      let bookMatch = refZone.match(/(\d{10})/);
+      if (!bookMatch) bookMatch = rowText.match(/(?:^|\D)(\d{10})(?=\D|$)/);
 
-      // B/L robust aus dem kleinen Kennzeichenbereich lesen.
+      // B/L robust aus dem Kennzeichenbereich lesen; falls PDF.js die
+      // Koordinaten anders liefert, zusätzlich aus der gesamten Zeile.
       const blZone = sortedLine
         .filter(i => i.x >= 450 && i.x < 482)
         .map(i => i.text)
@@ -532,20 +534,35 @@ async function parseElischPdf(bytes) {
         const exactBl = sortedLine.find(i => /^[BL]$/.test(i.text));
         if (exactBl) blText = exactBl.text;
       }
+      if (!blText) {
+        const rowBl = rowText.toUpperCase().match(/(?:^|\s)([BL])(?=\s|$)/);
+        if (rowBl) blText = rowBl[1];
+      }
 
-      // Gewicht ebenfalls aus der kompletten Gross-Zone zusammensetzen.
+      // Gewicht positionsbasiert; als letzter Fallback nehmen wir die Zahl
+      // direkt hinter dem B/L-Kennzeichen in derselben Zeile.
       const grossZone = sortedLine
         .filter(i => i.x >= 475 && i.x < 545)
         .map(i => i.text)
         .join("")
         .replace(/\D/g, "");
       const grossMatch = grossZone.match(/(\d{3,6})/);
-      const grossText = grossMatch ? grossMatch[1] : "";
+      let grossText = grossMatch ? grossMatch[1] : "";
+      if (!grossText) {
+        const rowGross = rowText.toUpperCase().match(/(?:^|\s)[BL]\s+(\d{3,6})(?=\s|$)/);
+        if (rowGross) grossText = rowGross[1];
+      }
 
-      const wagon = pick(0, 100, /^\d{12}$/);
+      let wagon = pick(0, 100, /^\d{12}$/);
+      if (!wagon) wagon = sortedLine.find(i => /^\d{12}$/.test(i.text));
 
       if (!bookMatch || !blText || !grossText) {
-        warnings.push(`Seite ${pageNo}: ${prefix.text}${leNo.text} konnte nicht vollständig gelesen werden.`);
+        const missing = [
+          !bookMatch ? "Ref-Nr." : null,
+          !blText ? "B/L" : null,
+          !grossText ? "Gewicht" : null
+        ].filter(Boolean).join(", ");
+        warnings.push(`Seite ${pageNo}: ${prefix.text}${leNo.text} konnte nicht vollständig gelesen werden (fehlt: ${missing}).`);
         continue;
       }
 
