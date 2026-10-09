@@ -505,17 +505,36 @@ async function parseElischPdf(bytes) {
       if (!leNo) continue;
       candidateRows++;
 
-      // Manche Elisch-PDFs verschmelzen Ref-Nr. und Versandbahnhof zu einem
-      // einzigen PDF.js-Textobjekt, z. B. "4254015001HAMBURG-WH".
-      // Deshalb akzeptieren wir die 10-stellige Ref-Nr. auch am Anfang eines
-      // längeren Textobjekts.
-      const bookItem = pick(330, 470, /^\d{10}(?:\D|$)/);
-      const bookMatch = bookItem?.text.match(/^(\d{10})/);
-      const bl = pick(460, 480, /^[BL]$/);
-      const gross = pick(480, 530, /^\d{3,6}$/);
-      const wagon = pick(0, 90, /^\d{12}$/);
+      // PDF.js kann einzelne Elisch-Felder je nach PDF unterschiedlich
+      // gruppieren. Deshalb lesen wir Ref-Nr., B/L und Gewicht nicht nur aus
+      // exakt einem Textobjekt, sondern mit robusten Fallbacks aus der Zeile.
+      const sortedLine = [...line].sort((a,b) => a.x - b.x);
+      const bookItem = sortedLine.find(i => i.x >= 320 && i.x < 470 && /\d{10}/.test(i.text));
+      const bookMatch = bookItem?.text.match(/(\d{10})/);
 
-      if (!bookMatch || !bl || !gross) {
+      let blText = "";
+      const blItem = sortedLine.find(i => i.x >= 450 && i.x < 490 && /(^|\s)[BL](?=\s|$)/.test(i.text));
+      if (blItem) {
+        const m = blItem.text.match(/(^|\s)([BL])(?=\s|$)/);
+        blText = m ? m[2] : "";
+      }
+      if (!blText) {
+        const exactBl = sortedLine.find(i => /^[BL]$/.test(i.text));
+        if (exactBl) blText = exactBl.text;
+      }
+
+      let grossText = "";
+      const grossItem = sortedLine.find(i => i.x >= 475 && i.x < 545 && /^\d{3,6}$/.test(i.text));
+      if (grossItem) grossText = grossItem.text;
+      if (!grossText) {
+        const numericAfterBl = sortedLine.find(i => i.x >= 470 && i.x < 560 && /\b\d{3,6}\b/.test(i.text));
+        const gm = numericAfterBl?.text.match(/\b(\d{3,6})\b/);
+        if (gm) grossText = gm[1];
+      }
+
+      const wagon = pick(0, 100, /^\d{12}$/);
+
+      if (!bookMatch || !blText || !grossText) {
         warnings.push(`Seite ${pageNo}: ${prefix.text}${leNo.text} konnte nicht vollständig gelesen werden.`);
         continue;
       }
@@ -537,9 +556,19 @@ async function parseElischPdf(bytes) {
         wagonSeq,
         wagonNo: lastWagon,
         ctrNo: `${prefix.text}${leNo.text}`, // bewusst String → führende Null bleibt erhalten
-        fe: bl.text === "B" ? "F" : "E",
-        gross: Number(gross.text),
-        bookNo: Number(bookMatch[1])
+        fe: blText === "B" ? "F" : "E",
+        gross: Number(grossText),
+        bookNo: Number(bookMatch[1]),
+        fpod: (() => {
+          const recipientText = sortedLine
+            .filter(i => i.x >= 225 && i.x < 335)
+            .map(i => i.text)
+            .join(" ")
+            .toUpperCase();
+          if (recipientText.includes("ADIDAS")) return "ADIDA";
+          if (recipientText.includes("ERNSTING")) return "ESF";
+          return null;
+        })()
       });
     }
   }
@@ -1431,10 +1460,10 @@ function renderResult(data) {
   if (mode === "inbound") {
     previewLabel = data.unitCount + " Zeilen";
     stats = [["Zugnummer",data.trainNo],["Datum",data.date],["Wagen",data.wagonCount],["Ladeeinheiten",data.unitCount]];
-    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["BOOK_NO",r=>r.bookNo]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo]];
     previewRows = data.entries;
     subtitle = "Erkannte TCM-Eingangsdaten";
-    rules = [["LINER","TFG"],["ETA","12:00"],["Leading Zero","erhalten"]];
+    rules = [["LINER","TFG"],["ETA","12:00"],["FPOD","ADIDAS → ADIDA · ERNSTING'S → ESF"],["Leading Zero","erhalten"]];
   } else if (mode === "outbound") {
     previewLabel = data.unitCount + " Zeilen";
     stats = [["Zugnummer","50418"],["ETD",data.date + " 20:00"],["Container",data.unitCount],["Zielterminals",data.destinationCount]];
@@ -1582,6 +1611,7 @@ function makeExcelRows(data) {
       CTR_NO: e.ctrNo,
       FE: e.fe,
       GROSS: e.gross,
+      FPOD: e.fpod || null,
       BOOK_NO: e.bookNo
     });
 
