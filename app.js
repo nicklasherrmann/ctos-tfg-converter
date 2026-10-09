@@ -179,7 +179,7 @@ function setupModeSwitcher() {
     .hellmann-part2-drop .drop-symbol{width:34px;height:34px;margin:0 auto 9px;border-radius:8px;background:#eaf2fb;color:#0b5cab;display:grid;place-items:center;font-size:18px}
     .hellmann-part2.done .hellmann-part2-drop{border-style:solid;border-color:rgba(24,166,122,.22);background:#fff}
     @media(max-width:760px){.hellmann-part2-head{align-items:stretch;flex-direction:column}.hellmann-part2-head .ghost-btn{width:100%}}
-    @media(max-width:1050px){.brand-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mode-switch{grid-template-columns:1fr}
+    @media(max-width:1050px){.brand-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.mode-switch{grid-template-columns:1fr}}
     @media(max-width:700px){.brand-grid{grid-template-columns:1fr}.mode-shell{align-items:stretch;flex-direction:column}.brand-card{min-height:250px}.brand-intro{margin-top:30px}.brand-intro h2{font-size:42px}}
   `;
   document.head.appendChild(style);
