@@ -496,7 +496,10 @@ async function parseElischPdf(bytes) {
       .sort((a,b) => b.y - a.y); // PDF.js y grows bottom-up
 
     for (const prefix of prefixes) {
-      const line = items.filter(i => Math.abs(i.y - prefix.y) <= 2.6);
+      // Einige Elisch-PDFs haben auf der letzten Seite leicht abweichende
+      // Textkoordinaten bzw. teilen Zellen in mehrere PDF.js-Textobjekte.
+      // 4.5 pt bleiben deutlich unter dem Zeilenabstand, sind aber robust genug.
+      const line = items.filter(i => Math.abs(i.y - prefix.y) <= 4.5);
 
       const pick = (xmin, xmax, regex) =>
         line.find(i => i.x >= xmin && i.x < xmax && regex.test(i.text));
@@ -505,32 +508,39 @@ async function parseElischPdf(bytes) {
       if (!leNo) continue;
       candidateRows++;
 
-      // PDF.js kann einzelne Elisch-Felder je nach PDF unterschiedlich
-      // gruppieren. Deshalb lesen wir Ref-Nr., B/L und Gewicht nicht nur aus
-      // exakt einem Textobjekt, sondern mit robusten Fallbacks aus der Zeile.
       const sortedLine = [...line].sort((a,b) => a.x - b.x);
-      const bookItem = sortedLine.find(i => i.x >= 320 && i.x < 470 && /\d{10}/.test(i.text));
-      const bookMatch = bookItem?.text.match(/(\d{10})/);
 
-      let blText = "";
-      const blItem = sortedLine.find(i => i.x >= 450 && i.x < 490 && /(^|\s)[BL](?=\s|$)/.test(i.text));
-      if (blItem) {
-        const m = blItem.text.match(/(^|\s)([BL])(?=\s|$)/);
-        blText = m ? m[2] : "";
-      }
+      // Ref-Nr. kann als ein Objekt, mit Versandbahnhof verschmolzen oder in
+      // mehrere Objekte geteilt sein. Deshalb wird der komplette Ref-Bereich
+      // zusammengesetzt und anschließend die erste 10-stellige Nummer gelesen.
+      const refZone = sortedLine
+        .filter(i => i.x >= 320 && i.x < 462)
+        .map(i => i.text)
+        .join("")
+        .replace(/\s+/g, "");
+      const bookMatch = refZone.match(/(\d{10})/);
+
+      // B/L robust aus dem kleinen Kennzeichenbereich lesen.
+      const blZone = sortedLine
+        .filter(i => i.x >= 450 && i.x < 482)
+        .map(i => i.text)
+        .join(" ")
+        .toUpperCase();
+      const blMatch = blZone.match(/(?:^|\s)([BL])(?:\s|$)/);
+      let blText = blMatch ? blMatch[1] : "";
       if (!blText) {
         const exactBl = sortedLine.find(i => /^[BL]$/.test(i.text));
         if (exactBl) blText = exactBl.text;
       }
 
-      let grossText = "";
-      const grossItem = sortedLine.find(i => i.x >= 475 && i.x < 545 && /^\d{3,6}$/.test(i.text));
-      if (grossItem) grossText = grossItem.text;
-      if (!grossText) {
-        const numericAfterBl = sortedLine.find(i => i.x >= 470 && i.x < 560 && /\b\d{3,6}\b/.test(i.text));
-        const gm = numericAfterBl?.text.match(/\b(\d{3,6})\b/);
-        if (gm) grossText = gm[1];
-      }
+      // Gewicht ebenfalls aus der kompletten Gross-Zone zusammensetzen.
+      const grossZone = sortedLine
+        .filter(i => i.x >= 475 && i.x < 545)
+        .map(i => i.text)
+        .join("")
+        .replace(/\D/g, "");
+      const grossMatch = grossZone.match(/(\d{3,6})/);
+      const grossText = grossMatch ? grossMatch[1] : "";
 
       const wagon = pick(0, 100, /^\d{12}$/);
 
