@@ -1109,7 +1109,9 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
     if (!ctrNo) return { row, originalIndex, sortSeq:Number.POSITIVE_INFINITY };
     const wagonNo = clean(row[idx.wagon]).replace(/\D/g,"");
     const info = mitvean.wagons.get(wagonNo);
-    const newSeq = mitvean.maxLnr - info.lnr + 1;
+    // Die MITVEAN-Liste ist ab jetzt die alleinige Quelle für die Wagenreihung:
+    // LNr 1 = WAG_SEQ_NO 1, LNr 2 = WAG_SEQ_NO 2, usw.
+    const newSeq = info.lnr;
     row[idx.seq] = newSeq;
     row[idx.wagType] = info.wagType;
     return { row, originalIndex, sortSeq:newSeq };
@@ -1743,8 +1745,8 @@ function renderResult(data) {
     stats = [["Zugnummer",data.trainNo || "–"],["Wagen",data.wagonCount],["Container",data.unitCount],["Status",data.finalized ? "finalisiert" : "Wagenliste offen"]];
     columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["WAG_TYPE",r=>r.wagType ?? ""],["CTR_NO",r=>r.ctrNo],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo ?? ""]];
     previewRows = data.entries;
-    subtitle = data.finalized ? "TCM-IN + MITVEAN · finale Wagenreihenfolge" : "TCM-IN Vorher · MITVEAN-Wagenliste noch hinzufügen";
-    rules = [["Änderungen","nur WAG_SEQ_NO + WAG_TYPE"],["Reihenfolge","MITVEAN rückwärts"],["Restliche TCM-Felder","unverändert"]];
+    subtitle = data.finalized ? "TCM-IN + MITVEAN · Wagenreihung exakt aus der Wagenliste" : "Ausgangs-TCM geladen · MITVEAN-Wagenliste noch hinzufügen";
+    rules = [["Änderungen","nur WAG_SEQ_NO + WAG_TYPE"],["Reihenfolge","1:1 aus MITVEAN-LNr"],["Elisch-Reihung","wird ignoriert"],["Restliche TCM-Felder","unverändert"]];
   } else if (mode === "hellmann") {
     previewLabel = data.unitCount + " Ladeeinheiten";
     stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen",data.wagonCount + " / 10"],["Ladeeinheiten",data.unitCount]];
@@ -1826,7 +1828,7 @@ function renderTfgMitveanControl(data) {
     box.classList.add("done");
     icon.textContent = "✓";
     el("tfgMitveanTitle").textContent = "MITVEAN-Wagenliste übernommen";
-    el("tfgMitveanText").textContent = "WAG_SEQ_NO wurde nach der physischen Wagenliste rückwärts neu vergeben und WAG_TYPE ergänzt. Alle übrigen TCM-Felder bleiben unverändert.";
+    el("tfgMitveanText").textContent = "WAG_SEQ_NO wurde 1:1 aus der LNr der MITVEAN-Wagenliste übernommen und WAG_TYPE ergänzt. Die Elisch-Reihung wird dabei vollständig ignoriert; alle übrigen TCM-Felder bleiben unverändert.";
     btn.textContent = "PDF ersetzen";
     el("tfgMitveanDropTitle").textContent = "Andere MITVEAN-PDF hineinziehen";
     el("tfgMitveanDropText").textContent = data.mitvean.sourceName + " ist aktuell geladen";
@@ -2095,10 +2097,16 @@ function downloadExcel() {
       }));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, parsedState.sheetName || SHEET_NAME);
-      let outputName = parsedState.baseSourceName || "CTOS-TCM-IN-TFG.xlsx";
-      if (/vorher/i.test(outputName)) outputName = outputName.replace(/vorher/ig, "Nachher");
-      else if (parsedState.date) outputName = "CTOS-TCM-IN-TFG - " + parsedState.date + " Nachher.xlsx";
-      else outputName = outputName.replace(/\.xlsx?$/i, "") + " Nachher.xlsx";
+      let outputName;
+      if (parsedState.date) {
+        outputName = "CTOS-TCM-IN-TFG - " + parsedState.date + ".xlsx";
+      } else {
+        outputName = (parsedState.baseSourceName || "CTOS-TCM-IN-TFG.xlsx")
+          .replace(/\s*(Vorher|Nachher)\s*/ig, " ")
+          .replace(/\s+\.xlsx?$/i, ".xlsx")
+          .trim();
+        if (!/\.xlsx?$/i.test(outputName)) outputName += ".xlsx";
+      }
       XLSX.writeFile(wb, outputName, {bookType:"xlsx",compression:true});
     } else {
       const rows = makeHwlOutboundRows(parsedState);
