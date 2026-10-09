@@ -309,9 +309,9 @@ function applyModeUi() {
   } else if (mode === "medInbound") {
     document.querySelector(".hero h2").textContent = "MEDLOG-Eingang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "MEDLOG Train Composition hier ablegen";
-    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · Blatt Outbound wird automatisch verwendet";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · Train Composition und Realised Train Composition werden automatisch erkannt";
     document.querySelector(".working strong").textContent = "MEDLOG-Datei wird ausgewertet…";
-    document.querySelector(".working span").textContent = "Wagen, Container, ISO-Codes und Gewichte werden aus Outbound übernommen.";
+    document.querySelector(".working span").textContent = "Format, Outbound-Voyage, Wagen, Container, ISO-Codes und Gewichte werden automatisch erkannt.";
     heroFrom.textContent = "XLSX";
     heroText.textContent = "MEDLOG Train Composition hochladen. ISO-Codes werden vorerst unverändert aus der Quelle übernommen; fehlendes Gewicht wird mit 10.000 kg ergänzt.";
   } else {
@@ -847,24 +847,49 @@ function medlogDateToGerman(value) {
 
 function parseMedlogInbound(bytes) {
   const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
-  const sheetName = wb.SheetNames.find(n => normalizeHeader(n) === "outbound");
-  if (!sheetName) throw new Error("Das Tabellenblatt \"Outbound\" wurde nicht gefunden.");
-  const ws = wb.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
-  if (!matrix.length) throw new Error("Das Outbound-Tabellenblatt ist leer.");
+  if (!wb.SheetNames.length) throw new Error("Die MEDLOG-Datei enthält kein Tabellenblatt.");
+
+  const canonical = value => normalizeHeader(value).replace(/x000d/g, "");
+  let sheetName = wb.SheetNames.find(n => canonical(n) === "outbound") || null;
+  let matrix = null;
+
+  if (sheetName) {
+    matrix = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header:1, defval:null, raw:true });
+  } else {
+    for (const name of wb.SheetNames) {
+      const candidate = XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, defval:null, raw:true });
+      const probe = candidate.slice(0, 35);
+      const isOutbound = probe.some(row => canonical(row?.[0]) === "visittype" && canonical(row?.[1]) === "outbound");
+      const hasOutboundVoyage = probe.some(row => canonical(row?.[0]) === "outboundvoyage");
+      const hasCompositionHeader = probe.some(row => {
+        const h = (row || []).map(canonical);
+        return h.includes("wagonposition") && h.includes("containernumber") && h.includes("fullempty");
+      });
+      if ((isOutbound || hasOutboundVoyage) && hasCompositionHeader) {
+        sheetName = name;
+        matrix = candidate;
+        break;
+      }
+    }
+  }
+
+  if (!sheetName || !matrix) throw new Error("Kein MEDLOG-Outbound bzw. Realised-Train-Composition-Blatt erkannt.");
+  if (!matrix.length) throw new Error("Das erkannte MEDLOG-Tabellenblatt ist leer.");
 
   let voyage = null;
+  let normalVoyage = null;
   let etdDate = null;
   let headerRow = -1;
   let indices = null;
 
-  for (let r = 0; r < Math.min(matrix.length, 40); r++) {
+  for (let r = 0; r < Math.min(matrix.length, 45); r++) {
     const row = matrix[r] || [];
-    const label = normalizeHeader(row[0]);
-    if (label === "voyage" && row[1] !== null && row[1] !== undefined) voyage = clean(row[1]);
+    const label = canonical(row[0]);
+    if (label === "outboundvoyage" && row[1] !== null && row[1] !== undefined) voyage = clean(row[1]);
+    if (label === "voyage" && row[1] !== null && row[1] !== undefined) normalVoyage = clean(row[1]);
     if (label === "etd" && row[1] !== null && row[1] !== undefined) etdDate = medlogDateToGerman(row[1]);
 
-    const h = row.map(normalizeHeader);
+    const h = row.map(canonical);
     const find = (...names) => h.findIndex(x => names.includes(x));
     const candidate = {
       seq: find("wagonposition"),
@@ -873,7 +898,8 @@ function parseMedlogInbound(bytes) {
       ctr: find("containernumber"),
       iso: find("containertypeisocode"),
       gross: find("grossweightkg"),
-      fe: find("fullempty")
+      fe: find("fullempty"),
+      discharge: find("dischargeterminal")
     };
     if (candidate.seq >= 0 && candidate.wagon >= 0 && candidate.ctr >= 0 && candidate.iso >= 0 && candidate.gross >= 0 && candidate.fe >= 0) {
       headerRow = r;
@@ -882,12 +908,13 @@ function parseMedlogInbound(bytes) {
     }
   }
 
-  if (headerRow < 0) throw new Error("Die MEDLOG-Spalten konnten im Outbound-Blatt nicht erkannt werden.");
-  if (!voyage) throw new Error("Keine MEDLOG-Voyage erkannt.");
+  voyage = voyage || normalVoyage;
+  if (headerRow < 0) throw new Error("Die MEDLOG-Spalten konnten nicht erkannt werden.");
+  if (!voyage) throw new Error("Keine MEDLOG-Outbound-Voyage erkannt.");
   const trainMatch = voyage.match(/\/\s*(\d{4,6})\b/) || voyage.match(/\b(\d{4,6})\b/);
-  if (!trainMatch) throw new Error("Aus der Voyage konnte keine Zugnummer abgeleitet werden.");
+  if (!trainMatch) throw new Error("Aus der Outbound-Voyage konnte keine Zugnummer abgeleitet werden.");
   const trainNo = Number(trainMatch[1]);
-  if (!etdDate) throw new Error("Kein ETD-Datum im MEDLOG-Outbound-Blatt erkannt.");
+  if (!etdDate) throw new Error("Kein ETD-Datum in der MEDLOG-Datei erkannt.");
   const etaDate = addDaysToGermanDate(etdDate, 1);
 
   let currentSeq = null;
@@ -906,12 +933,17 @@ function parseMedlogInbound(bytes) {
 
     const ctrNo = clean(row[indices.ctr]).toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!ctrNo) continue;
-    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) {
-      warnings.push("Zeile " + (r + 1) + ": Containernummer " + ctrNo + " hat ein unerwartetes Format.");
-    }
+    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) warnings.push("Zeile " + (r + 1) + ": Containernummer " + ctrNo + " hat ein unerwartetes Format.");
     if (currentSeq === null || !currentWagon) {
       warnings.push("Zeile " + (r + 1) + ": " + ctrNo + " konnte keinem Wagen zugeordnet werden.");
       continue;
+    }
+
+    if (indices.discharge >= 0) {
+      const discharge = canonical(row[indices.discharge]);
+      if (discharge && discharge !== "deosn" && !discharge.includes("osnabruck") && !discharge.includes("osnabrueck")) {
+        warnings.push("Zeile " + (r + 1) + ": " + ctrNo + " hat als Entladeterminal " + clean(row[indices.discharge]) + " statt DEOSN.");
+      }
     }
 
     const iso = clean(row[indices.iso]).toUpperCase();
@@ -933,7 +965,7 @@ function parseMedlogInbound(bytes) {
     });
   }
 
-  if (!entries.length) throw new Error("Keine Container im MEDLOG-Outbound-Blatt erkannt.");
+  if (!entries.length) throw new Error("Keine Container in der MEDLOG-Datei erkannt.");
   const wagonCount = new Set(entries.map(e => e.wagonNo)).size;
 
   return {
@@ -944,6 +976,8 @@ function parseMedlogInbound(bytes) {
     wagonCount,
     unitCount: entries.length,
     fallbackWeightCount,
+    sourceSheet: sheetName,
+    sourceFormat: canonical(sheetName) === "outbound" ? "Train Composition" : "Realised Train Composition",
     warnings
   };
 }
