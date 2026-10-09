@@ -2064,6 +2064,40 @@ function downloadExcel() {
       ws["!cols"]=COREOR_RELEASE_HEADERS.map((h,i)=>({wch:i===0?16:i===3?18:i===6?22:i===8?16:Math.min(Math.max(h.length+2,10),22)}));
       const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,COREOR_RELEASE_SHEET_NAME);
       XLSX.writeFile(wb,"Coreor_Release.xlsx",{bookType:"xlsx",compression:true});
+    } else if (mode === "tfgFinalize") {
+      if (!parsedState.finalized) throw new Error("Bitte zuerst die MITVEAN-Wagenliste hinzufügen.");
+      const matrix = [...parsedState.preamble.map(r => [...r]), [...parsedState.headers], ...parsedState.rows.map(r => [...r])];
+      const ws = XLSX.utils.aoa_to_sheet(matrix, { cellDates:false });
+      const headerExcelRow = parsedState.headerRow + 1;
+      const etaCol = parsedState.indices.eta;
+      const ctrCol = parsedState.indices.ctr;
+      if (etaCol >= 0 || ctrCol >= 0) {
+        for (let r = headerExcelRow + 1; r <= matrix.length; r++) {
+          if (etaCol >= 0) {
+            const addr = XLSX.utils.encode_cell({ r:r-1, c:etaCol });
+            const cell = ws[addr];
+            if (cell && typeof cell.v === "number") { cell.t = "n"; cell.z = "dd.mm.yyyy hh:mm"; }
+          }
+          if (ctrCol >= 0) {
+            const addr = XLSX.utils.encode_cell({ r:r-1, c:ctrCol });
+            const cell = ws[addr];
+            if (cell) cell.t = "s";
+          }
+        }
+      }
+      ws["!cols"] = parsedState.headers.map((h,i)=>({wch:
+        i === parsedState.indices.eta ? 19 :
+        i === parsedState.indices.wagon ? 15 :
+        i === parsedState.indices.ctr ? 16 :
+        Math.min(Math.max(String(h || "").length + 2, 10), 24)
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, parsedState.sheetName || SHEET_NAME);
+      let outputName = parsedState.baseSourceName || "CTOS-TCM-IN-TFG.xlsx";
+      if (/vorher/i.test(outputName)) outputName = outputName.replace(/vorher/ig, "Nachher");
+      else if (parsedState.date) outputName = "CTOS-TCM-IN-TFG - " + parsedState.date + " Nachher.xlsx";
+      else outputName = outputName.replace(/\.xlsx?$/i, "") + " Nachher.xlsx";
+      XLSX.writeFile(wb, outputName, {bookType:"xlsx",compression:true});
     } else {
       const rows = makeHwlOutboundRows(parsedState);
       const ws = XLSX.utils.aoa_to_sheet([HWL_OUT_HEADERS, ...rows], { cellDates:false });
