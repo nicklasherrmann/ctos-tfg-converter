@@ -265,12 +265,12 @@ function selectBrand(brand) {
   document.querySelector(".hero").classList.remove("hidden");
   panel.classList.remove("hidden");
   document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("hidden", btn.dataset.brand !== brand));
-  document.querySelector(".mode-switch").classList.toggle("single", brand === "med");
-  const titles = { tfg:"TFG Converter", hwl:"HWL Converter", med:"MEDLOG Converter" };
-  const subtitles = { tfg:"TFG Import & Export", hwl:"HWL Import & Export", med:"MEDLOG Eingang" };
+  document.querySelector(".mode-switch").classList.toggle("single", brand === "med" || brand === "ctos");
+  const titles = { tfg:"TFG Converter", hwl:"HWL Converter", med:"MEDLOG Converter", ctos:"CTOS Dispoliste" };
+  const subtitles = { tfg:"TFG Import & Export", hwl:"HWL Import & Export", med:"MEDLOG Eingang", ctos:"COREOR Erstellung" };
   document.querySelector(".brand h1").textContent = titles[brand] || "CTOS Converter";
   document.querySelector(".brand p").textContent = subtitles[brand] || "Import & Export";
-  setMode(brand === "tfg" ? "inbound" : brand === "hwl" ? "hellmann" : "medInbound");
+  setMode(brand === "tfg" ? "inbound" : brand === "hwl" ? "hellmann" : brand === "med" ? "medInbound" : "coreorRelease");
 }
 
 function setMode(nextMode) {
@@ -280,9 +280,10 @@ function setMode(nextMode) {
     outbound:"modeOutbound",
     hellmann:"modeHellmann",
     hwlOutbound:"modeHwlOutbound",
-    medInbound:"modeMedInbound"
+    medInbound:"modeMedInbound",
+    coreorRelease:"modeCoreorRelease"
   };
-  ["modeInbound","modeOutbound","modeHellmann","modeHwlOutbound","modeMedInbound"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
+  ["modeInbound","modeOutbound","modeHellmann","modeHwlOutbound","modeMedInbound","modeCoreorRelease"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
   reset();
   applyModeUi();
 }
@@ -322,6 +323,14 @@ function applyModeUi() {
     document.querySelector(".working span").textContent = "Format, Outbound-Voyage, Wagen, Container, ISO-Codes und Gewichte werden automatisch erkannt.";
     heroFrom.textContent = "XLSX";
     heroText.textContent = "MEDLOG Train Composition hochladen. ISO-Codes werden vorerst unverändert aus der Quelle übernommen; fehlendes Gewicht wird mit 10.000 kg ergänzt.";
+  } else if (mode === "coreorRelease") {
+    document.querySelector(".hero h2").textContent = "COREOR Release erstellen.";
+    document.querySelector(".dropzone h3").textContent = "CTOS-Dispoliste hier ablegen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · alle Dispozeilen werden in COREOR Release übernommen";
+    document.querySelector(".working strong").textContent = "Dispoliste wird ausgewertet…";
+    document.querySelector(".working span").textContent = "Container, ISO, Import/Export, Release Order und Referenzen werden erkannt.";
+    heroFrom.textContent = "XLSX";
+    heroText.textContent = "Dispoliste hochladen, COREOR-Release-Daten prüfen und die fertige Coreor_Release-Datei herunterladen.";
   } else {
     document.querySelector(".hero h2").textContent = "HWL-Ausgang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "HWL-Ladeliste oder Brückenplan hier ablegen";
