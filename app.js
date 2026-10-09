@@ -208,6 +208,7 @@ function setupModeSwitcher() {
   shell.innerHTML = '<button id="brandBack" class="ghost-btn mode-back" type="button">← Partner</button><div class="mode-switch">' +
     '<button id="modeInbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span></button>' +
     '<button id="modeOutbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
+    '<button id="modeTfgFinalize" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">TCM finalisieren</span><span class="mode-desc">TCM-IN + MITVEAN → finale TCM</span></button>' +
     '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">PDF + Zusatzliste → TCM Excel</span></button>' +
     '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
     '<button id="modeMedInbound" data-brand="med" class="mode-btn" type="button"><span class="mode-kicker">MED</span><span class="mode-title">Eingang</span><span class="mode-desc">Train Composition → TCM Excel</span></button>' +
@@ -218,6 +219,11 @@ function setupModeSwitcher() {
   part2.className = "hellmann-part2 hidden";
   part2.innerHTML = '<div class="hellmann-part2-head"><div class="hellmann-part2-copy"><span class="hellmann-part2-icon">2</span><div><h4 id="hellmannPart2Title">Teil 2 · Regensburg → Osnabrück</h4><p id="hellmannPart2Text">Separate Wagenliste für Wagen 7–10 hinzufügen.</p></div></div><button id="hellmannPart2Btn" class="ghost-btn" type="button">Datei auswählen</button></div><div id="hellmannPart2Drop" class="hellmann-part2-drop" tabindex="0" role="button"><div><div class="drop-symbol">↓</div><strong id="hellmannPart2DropTitle">Zusatzliste hier hineinziehen</strong><span id="hellmannPart2DropText">.xls oder .xlsx · auch direkt aus einer Mail, wenn der Browser den Anhang als Datei bereitstellt</span></div></div><div id="hellmannPart2Meta" class="hellmann-part2-meta"></div><input id="hellmannPart2Input" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>';
   document.querySelector(".result .actions").parentNode.insertBefore(part2, document.querySelector(".result .actions"));
+  const mitvean = document.createElement("div");
+  mitvean.id = "tfgMitvean";
+  mitvean.className = "hellmann-part2 hidden";
+  mitvean.innerHTML = '<div class="hellmann-part2-head"><div class="hellmann-part2-copy"><span class="hellmann-part2-icon">2</span><div><h4 id="tfgMitveanTitle">Schritt 2 · MITVEAN-Wagenliste</h4><p id="tfgMitveanText">Liste Gleisinhalt als PDF hinzufügen.</p></div></div><button id="tfgMitveanBtn" class="ghost-btn" type="button">PDF auswählen</button></div><div id="tfgMitveanDrop" class="hellmann-part2-drop" tabindex="0" role="button"><div><div class="drop-symbol">↓</div><strong id="tfgMitveanDropTitle">MITVEAN-PDF hier hineinziehen</strong><span id="tfgMitveanDropText">Liste Gleisinhalt · Wagenfolge und WAG_TYPE werden übernommen</span></div></div><div id="tfgMitveanMeta" class="hellmann-part2-meta"></div><input id="tfgMitveanInput" type="file" accept=".pdf,application/pdf" hidden>';
+  document.querySelector(".result .actions").parentNode.insertBefore(mitvean, document.querySelector(".result .actions"));
   el("brandTFG").addEventListener("click", () => selectBrand("tfg"));
   el("brandHWL").addEventListener("click", () => selectBrand("hwl"));
   el("brandMED").addEventListener("click", () => selectBrand("med"));
@@ -225,6 +231,7 @@ function setupModeSwitcher() {
   el("brandBack").addEventListener("click", showBrandLanding);
   el("modeInbound").addEventListener("click", () => setMode("inbound"));
   el("modeOutbound").addEventListener("click", () => setMode("outbound"));
+  el("modeTfgFinalize").addEventListener("click", () => setMode("tfgFinalize"));
   el("modeHellmann").addEventListener("click", () => setMode("hellmann"));
   el("modeHwlOutbound").addEventListener("click", () => setMode("hwlOutbound"));
   el("modeMedInbound").addEventListener("click", () => setMode("medInbound"));
@@ -253,6 +260,27 @@ function setupModeSwitcher() {
   part2Drop.addEventListener("click", () => el("hellmannPart2Input").click());
   part2Drop.addEventListener("keydown", e => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el("hellmannPart2Input").click(); }
+  });
+  el("tfgMitveanBtn").addEventListener("click", () => el("tfgMitveanInput").click());
+  el("tfgMitveanInput").addEventListener("change", () => {
+    const file = el("tfgMitveanInput").files?.[0];
+    if (file) handleTfgMitveanFile(file);
+  });
+  const mitveanDrop = el("tfgMitveanDrop");
+  ["dragenter","dragover"].forEach(evt => mitveanDrop.addEventListener(evt, e => {
+    e.preventDefault(); e.stopPropagation(); mitveanDrop.classList.add("drag");
+  }));
+  ["dragleave","drop"].forEach(evt => mitveanDrop.addEventListener(evt, e => {
+    e.preventDefault(); e.stopPropagation(); mitveanDrop.classList.remove("drag");
+  }));
+  mitveanDrop.addEventListener("drop", e => {
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleTfgMitveanFile(file);
+    else renderTfgMitveanError("Der Browser hat aus dem Drop keine PDF-Datei erhalten.");
+  });
+  mitveanDrop.addEventListener("click", () => el("tfgMitveanInput").click());
+  mitveanDrop.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el("tfgMitveanInput").click(); }
   });
 }
 
