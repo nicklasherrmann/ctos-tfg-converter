@@ -1098,29 +1098,52 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
   if (base.trainNo && mitvean.trainNo && Number(base.trainNo) !== Number(mitvean.trainNo)) {
     throw new Error("Zugnummer passt nicht: TCM " + base.trainNo + ", MITVEAN " + mitvean.trainNo + ".");
   }
+
   const idx = base.indices;
-  const currentWagons = new Set(base.rows.filter(r => clean(r[idx.ctr])).map(r => clean(r[idx.wagon]).replace(/\D/g,"")).filter(Boolean));
+  const dataRows = base.rows.filter(r => clean(r[idx.ctr]));
+  const nonDataRows = base.rows.filter(r => !clean(r[idx.ctr]));
+
+  const rowsByWagon = new Map();
+  for (const sourceRow of dataRows) {
+    const wagonNo = clean(sourceRow[idx.wagon]).replace(/\D/g,"");
+    if (!wagonNo) continue;
+    if (!rowsByWagon.has(wagonNo)) rowsByWagon.set(wagonNo, []);
+    rowsByWagon.get(wagonNo).push([...sourceRow]);
+  }
+
+  const currentWagons = new Set(rowsByWagon.keys());
   const missing = [...currentWagons].filter(w => !mitvean.wagons.has(w));
-  if (missing.length) throw new Error("Diese TCM-Wagen fehlen in der MITVEAN-Liste: " + missing.join(", ") + ".");
+  if (missing.length) {
+    throw new Error("Diese TCM-Wagen fehlen in der MITVEAN-Liste: " + missing.join(", ") + ".");
+  }
 
-  const decorated = base.rows.map((sourceRow, originalIndex) => {
-    const row = [...sourceRow];
-    const ctrNo = clean(row[idx.ctr]);
-    if (!ctrNo) return { row, originalIndex, sortSeq:Number.POSITIVE_INFINITY };
-    const wagonNo = clean(row[idx.wagon]).replace(/\D/g,"");
-    const info = mitvean.wagons.get(wagonNo);
-    // Die MITVEAN-Liste ist ab jetzt die alleinige Quelle für die Wagenreihung:
-    // LNr 1 = WAG_SEQ_NO 1, LNr 2 = WAG_SEQ_NO 2, usw.
-    const newSeq = info.lnr;
-    row[idx.seq] = newSeq;
-    row[idx.wagType] = info.wagType;
-    return { row, originalIndex, sortSeq:newSeq };
-  });
+  // Entscheidend: Die Ausgangs-/Elisch-Reihung wird vollständig verworfen.
+  // Wir bauen die Excel-Zeilen NEU in exakt derselben Wagenreihenfolge auf,
+  // wie sie in der MITVEAN-Liste per LNr 1, 2, 3 ... steht.
+  const mitveanOrder = [...mitvean.wagons.values()]
+    .sort((a,b) => a.lnr - b.lnr)
+    .filter(info => currentWagons.has(info.wagonNo));
 
-  decorated.sort((a,b) => a.sortSeq - b.sortSeq || a.originalIndex - b.originalIndex);
-  const rows = decorated.map(x => x.row);
-  const dataRows = rows.filter(r => clean(r[idx.ctr]));
-  const entries = dataRows.map(row => ({
+  const orderedRows = [];
+  for (const info of mitveanOrder) {
+    const wagonRows = rowsByWagon.get(info.wagonNo) || [];
+    for (const sourceRow of wagonRows) {
+      const row = [...sourceRow];
+      row[idx.seq] = info.lnr;
+      row[idx.wagType] = info.wagType;
+      orderedRows.push(row);
+    }
+  }
+
+  if (orderedRows.length !== dataRows.length) {
+    throw new Error(
+      "Die Wagenreihung konnte nicht vollständig aufgebaut werden: " +
+      orderedRows.length + " von " + dataRows.length + " Containerzeilen zugeordnet."
+    );
+  }
+
+  const rows = [...orderedRows, ...nonDataRows];
+  const entries = orderedRows.map(row => ({
     wagonSeq:row[idx.seq],
     wagonNo:clean(row[idx.wagon]).replace(/\D/g,""),
     wagType:row[idx.wagType],
@@ -1129,14 +1152,43 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
     bookNo:idx.book >= 0 ? row[idx.book] : null
   }));
 
+  // Harte Plausibilitätsprüfung: die eindeutige Wagenfolge in der Ausgabe
+  // muss exakt der MITVEAN-LNr-Folge entsprechen.
+  const outputWagonOrder = [];
+  for (const e of entries) {
+    if (outputWagonOrder[outputWagonOrder.length - 1] !== e.wagonNo) outputWagonOrder.push(e.wagonNo);
+  }
+  const expectedWagonOrder = mitveanOrder.map(info => info.wagonNo);
+  const orderOk =
+    outputWagonOrder.length === expectedWagonOrder.length &&
+    outputWagonOrder.every((w,i) => w === expectedWagonOrder[i]);
+
+  if (!orderOk) {
+    throw new Error("Interne Prüfung fehlgeschlagen: Die Ausgabe entspricht nicht exakt der MITVEAN-Wagenreihenfolge.");
+  }
+
+  const missingTypes = entries.filter(e => e.wagType === null || e.wagType === undefined || e.wagType === "");
+  if (missingTypes.length) {
+    throw new Error("WAG_TYPE konnte für " + missingTypes.length + " Containerzeile(n) nicht gesetzt werden.");
+  }
+
   return {
     ...base,
-    rows, entries, unitCount:entries.length,
-    wagonCount:new Set(entries.map(e => e.wagonNo)).size,
+    rows,
+    entries,
+    unitCount:entries.length,
+    wagonCount:outputWagonOrder.length,
     warnings:[...(base.warnings || []), ...(mitvean.warnings || [])],
     sourceName:(base.baseSourceName || base.sourceName) + " + " + sourceName,
     finalized:true,
-    mitvean:{ sourceName, wagonCount:mitvean.wagonCount, maxLnr:mitvean.maxLnr, trainNo:mitvean.trainNo }
+    mitvean:{
+      sourceName,
+      wagonCount:mitvean.wagonCount,
+      maxLnr:mitvean.maxLnr,
+      trainNo:mitvean.trainNo,
+      firstWagon:expectedWagonOrder[0] || null,
+      lastWagon:expectedWagonOrder[expectedWagonOrder.length - 1] || null
+    }
   };
 }
 
@@ -1836,7 +1888,9 @@ function renderTfgMitveanControl(data) {
       ["MITVEAN-Wagen", data.mitvean.wagonCount],
       ["Zug", data.mitvean.trainNo || data.trainNo || "–"],
       ["TCM-Container", data.unitCount],
-      ["Geändert", "WAG_SEQ_NO + WAG_TYPE"]
+      ["Geändert", "WAG_SEQ_NO + WAG_TYPE"],
+      ["Erster Wagen", data.mitvean.firstWagon || "–"],
+      ["Letzter Wagen", data.mitvean.lastWagon || "–"]
     ].map(([k,v]) => "<span>" + escapeHtml(k) + ": <b>" + escapeHtml(v) + "</b></span>").join("");
   } else {
     icon.textContent = "2";
