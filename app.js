@@ -281,7 +281,7 @@ function setMode(nextMode) {
 
 function applyModeUi() {
   const expectsPdf = mode === "inbound" || mode === "hellmann";
-  fileInput.accept = expectsPdf ? ".pdf,application/pdf" : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel";
+  fileInput.accept = mode === "hwlOutbound" ? ".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : (expectsPdf ? ".pdf,application/pdf" : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel");
   if (mode === "inbound") {
     document.querySelector(".hero h2").textContent = "TFG-Eingang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "Elisch-PDF hier ablegen";
@@ -316,12 +316,12 @@ function applyModeUi() {
     heroText.textContent = "MEDLOG Train Composition hochladen. ISO-Codes werden vorerst unverändert aus der Quelle übernommen; fehlendes Gewicht wird mit 10.000 kg ergänzt.";
   } else {
     document.querySelector(".hero h2").textContent = "HWL-Ausgang konvertieren.";
-    document.querySelector(".dropzone h3").textContent = "HWL-Ladeliste hier ablegen";
-    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · 40 feste Verladeplätze";
-    document.querySelector(".working strong").textContent = "HWL-Ladeliste wird ausgewertet…";
-    document.querySelector(".working span").textContent = "REG- und LDH-Plätze werden positionsgetreu übernommen; nichts rutscht nach.";
-    heroFrom.textContent = "XLSX";
-    heroText.textContent = "HWL-Ladeliste hochladen. Das Tool erzeugt exakt 40 positionsfeste Exportplätze und ignoriert nicht verladenen Überhang.";
+    document.querySelector(".dropzone h3").textContent = "HWL-Ladeliste oder Brückenplan hier ablegen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) oder PDF · 40 feste Verladeplätze";
+    document.querySelector(".working strong").textContent = "HWL-Datei wird ausgewertet…";
+    document.querySelector(".working span").textContent = "Excel- und PDF-Format werden automatisch erkannt; REG und LDH bleiben positionsgetreu.";
+    heroFrom.textContent = "XLSX / PDF";
+    heroText.textContent = "HWL-Ladeliste als Excel oder Brückenplan als PDF hochladen. Beide Formate erzeugen dieselbe positionsfeste Exportdatei.";
   }
 }
 
