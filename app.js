@@ -209,7 +209,7 @@ function setupModeSwitcher() {
   shell.innerHTML = '<button id="brandBack" class="ghost-btn mode-back" type="button">← Partner</button><div class="mode-switch">' +
     '<button id="modeInbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span></button>' +
     '<button id="modeOutbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
-    '<button id="modeTfgFinalize" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">TCM finalisieren</span><span class="mode-desc">TCM-IN + MITVEAN → finale TCM</span></button>' +
+    '<button id="modeTfgFinalize" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">TCM finalisieren</span><span class="mode-desc">TCM-IN + Wagenliste → finale TCM</span></button>' +
     '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">PDF + Zusatzliste → TCM Excel</span></button>' +
     '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
     '<button id="modeMedInbound" data-brand="med" class="mode-btn" type="button"><span class="mode-kicker">MED</span><span class="mode-title">Eingang</span><span class="mode-desc">Train Composition → TCM Excel</span></button>' +
@@ -223,7 +223,7 @@ function setupModeSwitcher() {
   const mitvean = document.createElement("div");
   mitvean.id = "tfgMitvean";
   mitvean.className = "hellmann-part2 hidden";
-  mitvean.innerHTML = '<div class="hellmann-part2-head"><div class="hellmann-part2-copy"><span class="hellmann-part2-icon">2</span><div><h4 id="tfgMitveanTitle">Schritt 2 · MITVEAN-Wagenliste</h4><p id="tfgMitveanText">Liste Gleisinhalt als PDF hinzufügen.</p></div></div><button id="tfgMitveanBtn" class="ghost-btn" type="button">PDF auswählen</button></div><div id="tfgMitveanDrop" class="hellmann-part2-drop" tabindex="0" role="button"><div><div class="drop-symbol">↓</div><strong id="tfgMitveanDropTitle">MITVEAN-PDF hier hineinziehen</strong><span id="tfgMitveanDropText">Liste Gleisinhalt · Wagenfolge und WAG_TYPE werden übernommen</span></div></div><div id="tfgMitveanMeta" class="hellmann-part2-meta"></div><input id="tfgMitveanInput" type="file" accept=".pdf,application/pdf" hidden>';
+  mitvean.innerHTML = '<div class="hellmann-part2-head"><div class="hellmann-part2-copy"><span class="hellmann-part2-icon">2</span><div><h4 id="tfgMitveanTitle">Schritt 2 · Wagenliste</h4><p id="tfgMitveanText">Liste Gleisinhalt als PDF hinzufügen.</p></div></div><button id="tfgMitveanBtn" class="ghost-btn" type="button">PDF auswählen</button></div><div id="tfgMitveanDrop" class="hellmann-part2-drop" tabindex="0" role="button"><div><div class="drop-symbol">↓</div><strong id="tfgMitveanDropTitle">Wagenlisten-PDF hier hineinziehen</strong><span id="tfgMitveanDropText">Liste Gleisinhalt · Wagenfolge und WAG_TYPE werden übernommen</span></div></div><div id="tfgMitveanMeta" class="hellmann-part2-meta"></div><input id="tfgMitveanInput" type="file" accept=".pdf,application/pdf" hidden>';
   document.querySelector(".result .actions").parentNode.insertBefore(mitvean, document.querySelector(".result .actions"));
   el("brandTFG").addEventListener("click", () => selectBrand("tfg"));
   el("brandHWL").addEventListener("click", () => selectBrand("hwl"));
@@ -354,7 +354,7 @@ function applyModeUi() {
     document.querySelector(".working strong").textContent = "TCM-IN wird eingelesen…";
     document.querySelector(".working span").textContent = "Die vorhandenen Containerdaten bleiben unverändert; Schritt 2 ergänzt Wagenfolge und WAG_TYPE.";
     heroFrom.textContent = "XLSX + PDF";
-    heroText.textContent = "Zuerst die bestehende TCM-IN laden. Danach die MITVEAN-Wagenliste hinzufügen; nur WAG_SEQ_NO und WAG_TYPE werden angepasst.";
+    heroText.textContent = "Zuerst die bestehende TCM-IN laden. Danach die Wagenliste hinzufügen; nur WAG_SEQ_NO und WAG_TYPE werden angepasst.";
   } else if (mode === "hellmann") {
     document.querySelector(".hero h2").textContent = "HWL-Eingang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "Hellmann-Wagenliste hier ablegen";
@@ -1038,8 +1038,9 @@ function parseTfgTcmSource(bytes) {
 
 function mitveanWagType(axles, lup) {
   const known = {
-    "6-263":6263, "6-267":6267, "4-197":4197, "4-196":4196,
-    "2-138":2138, "2-140":2140, "4-259":4260
+    "6-263":6263, "6-264":6264, "6-267":6267, "6-268":6268,
+    "4-196":4196, "4-197":4197, "4-198":4198, "4-259":4260, "4-260":4260,
+    "2-138":2138, "2-139":2139, "2-140":2140, "2-141":2141
   };
   const key = String(axles) + "-" + String(lup);
   return { value:known[key] || Number(String(axles) + String(lup).padStart(3,"0")), known:!!known[key] };
@@ -1073,30 +1074,51 @@ async function parseMitveanPdf(bytes) {
     }));
     const lines = groupPdfRows(items, 2.8);
     for (const line of lines) {
+      // Beide DB-Ausgaben kommen vor:
+      // MITVEAN "Liste Gleisinhalt" mit Z50417/2 und
+      // MITSVKI "Liste Eingangszug" mit "Zug 50419".
       for (const tm of line.matchAll(/\bZ(\d{5})\/\d+\b/g)) trainNos.add(Number(tm[1]));
-      const m = line.match(/^\s*(\d{1,3})\s+(\d{4})\s+(\d{4})\s+(\d{3})\s*-\s*(\d)\s+(\d)\s+[A-Z]\s+(\d{3})\b/);
-      if (!m) continue;
-      const lnr = Number(m[1]);
-      const wagonNo = m[2] + m[3] + m[4] + m[5];
-      const axles = Number(m[6]);
-      const lup = Number(m[7]);
+      for (const tm of line.matchAll(/\bZug\s+(\d{5})\b/gi)) trainNos.add(Number(tm[1]));
+
+      let lnr, wagonNo, axles, lup;
+
+      // MITVEAN, z. B.:
+      // 1 3180 4950 630-2 6 B 263 ...
+      const oldFmt = line.match(/^\s*(\d{1,3})\s+(\d{4})\s+(\d{4})\s+(\d{3})\s*-\s*(\d)\s+(\d)\s+[A-Z]\s+(\d{3})\b/);
+      if (oldFmt) {
+        lnr = Number(oldFmt[1]);
+        wagonNo = oldFmt[2] + oldFmt[3] + oldFmt[4] + oldFmt[5];
+        axles = Number(oldFmt[6]);
+        lup = Number(oldFmt[7]);
+      } else {
+        // MITSVKI, z. B.:
+        // 2 1 T 3180 4960 129-3 6 267 ...   (erste Zeile mit Gruppen-Nr.)
+        //   2 T 3180 4850 286-4 6 268 ...   (weitere Zeilen)
+        const newFmt = line.match(/^\s*(?:\d+\s+)?(\d{1,3})\s+T\s+(\d{4})\s+(\d{4})\s+(\d{3})\s*-\s*(\d)\s+(\d)\s+(\d{3})\b/i);
+        if (!newFmt) continue;
+        lnr = Number(newFmt[1]);
+        wagonNo = newFmt[2] + newFmt[3] + newFmt[4] + newFmt[5];
+        axles = Number(newFmt[6]);
+        lup = Number(newFmt[7]);
+      }
+
       const wt = mitveanWagType(axles, lup);
       if (!wt.known) warnings.push("Wagen " + wagonNo + ": WAG_TYPE " + wt.value + " wurde aus Achsen/LüP abgeleitet (" + axles + "/" + lup + ").");
-      if (wagons.has(wagonNo)) warnings.push("Wagen " + wagonNo + " kommt mehrfach in der MITVEAN-Liste vor.");
+      if (wagons.has(wagonNo)) warnings.push("Wagen " + wagonNo + " kommt mehrfach in der Wagenliste vor.");
       wagons.set(wagonNo, { lnr, wagonNo, axles, lup, wagType:wt.value });
       maxLnr = Math.max(maxLnr, lnr);
     }
   }
 
-  if (!wagons.size) throw new Error("Keine Wagenzeilen in der MITVEAN-Liste Gleisinhalt erkannt.");
+  if (!wagons.size) throw new Error("Keine Wagenzeilen erkannt. Unterstützt werden MITVEAN/MITSVKI-Wagenliste und MITSVKI „Liste Eingangszug“.");
   const trainNo = trainNos.size === 1 ? [...trainNos][0] : null;
-  if (trainNos.size > 1) warnings.push("Mehrere Zugnummern in der MITVEAN-PDF erkannt: " + [...trainNos].join(", ") + ".");
+  if (trainNos.size > 1) warnings.push("Mehrere Zugnummern in der Wagenlisten-PDF erkannt: " + [...trainNos].join(", ") + ".");
   return { wagons, wagonCount:wagons.size, maxLnr, trainNo, warnings };
 }
 
 function finalizeTfgTcm(base, mitvean, sourceName) {
   if (base.trainNo && mitvean.trainNo && Number(base.trainNo) !== Number(mitvean.trainNo)) {
-    throw new Error("Zugnummer passt nicht: TCM " + base.trainNo + ", MITVEAN " + mitvean.trainNo + ".");
+    throw new Error("Zugnummer passt nicht: TCM " + base.trainNo + ", Wagenliste " + mitvean.trainNo + ".");
   }
 
   const idx = base.indices;
@@ -1114,12 +1136,12 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
   const currentWagons = new Set(rowsByWagon.keys());
   const missing = [...currentWagons].filter(w => !mitvean.wagons.has(w));
   if (missing.length) {
-    throw new Error("Diese TCM-Wagen fehlen in der MITVEAN-Liste: " + missing.join(", ") + ".");
+    throw new Error("Diese TCM-Wagen fehlen in der Wagenliste: " + missing.join(", ") + ".");
   }
 
   // Entscheidend: Die Ausgangs-/Elisch-Reihung wird vollständig verworfen.
   // Wir bauen die Excel-Zeilen NEU in exakt derselben Wagenreihenfolge auf,
-  // wie sie in der MITVEAN-Liste per LNr 1, 2, 3 ... steht.
+  // wie sie in der Wagenliste per LNr 1, 2, 3 ... steht.
   const mitveanOrder = [...mitvean.wagons.values()]
     .sort((a,b) => a.lnr - b.lnr)
     .filter(info => currentWagons.has(info.wagonNo));
@@ -1153,7 +1175,7 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
   }));
 
   // Harte Plausibilitätsprüfung: die eindeutige Wagenfolge in der Ausgabe
-  // muss exakt der MITVEAN-LNr-Folge entsprechen.
+  // muss exakt der Wagenlisten-LNr-Folge entsprechen.
   const outputWagonOrder = [];
   for (const e of entries) {
     if (outputWagonOrder[outputWagonOrder.length - 1] !== e.wagonNo) outputWagonOrder.push(e.wagonNo);
@@ -1164,7 +1186,7 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
     outputWagonOrder.every((w,i) => w === expectedWagonOrder[i]);
 
   if (!orderOk) {
-    throw new Error("Interne Prüfung fehlgeschlagen: Die Ausgabe entspricht nicht exakt der MITVEAN-Wagenreihenfolge.");
+    throw new Error("Interne Prüfung fehlgeschlagen: Die Ausgabe entspricht nicht exakt der Wagenlisten-Wagenreihenfolge.");
   }
 
   const missingTypes = entries.filter(e => e.wagType === null || e.wagType === undefined || e.wagType === "");
@@ -1199,7 +1221,7 @@ async function handleTfgMitveanFile(file) {
   const btn = el("tfgMitveanBtn");
   btn.disabled = true;
   btn.textContent = "Wird gelesen…";
-  if (el("tfgMitveanDropTitle")) el("tfgMitveanDropTitle").textContent = "MITVEAN-PDF wird verarbeitet…";
+  if (el("tfgMitveanDropTitle")) el("tfgMitveanDropTitle").textContent = "Wagenlisten-PDF wird verarbeitet…";
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const mitvean = await parseMitveanPdf(bytes);
@@ -1208,7 +1230,7 @@ async function handleTfgMitveanFile(file) {
     renderResult(parsedState);
   } catch (err) {
     console.error(err);
-    renderTfgMitveanError(err?.message || "Die MITVEAN-PDF konnte nicht verarbeitet werden.");
+    renderTfgMitveanError(err?.message || "Die Wagenlisten-PDF konnte nicht verarbeitet werden.");
   } finally {
     btn.disabled = false;
     if (mode === "tfgFinalize") btn.textContent = parsedState?.finalized ? "PDF ersetzen" : "PDF auswählen";
@@ -1220,11 +1242,11 @@ function renderTfgMitveanError(message) {
   box.classList.remove("hidden", "done");
   box.classList.add("error");
   box.querySelector(".hellmann-part2-icon").textContent = "!";
-  el("tfgMitveanTitle").textContent = "MITVEAN-Liste konnte nicht verarbeitet werden";
+  el("tfgMitveanTitle").textContent = "Wagenliste konnte nicht verarbeitet werden";
   el("tfgMitveanText").textContent = message;
   el("tfgMitveanMeta").innerHTML = "";
   el("tfgMitveanBtn").textContent = "Andere PDF wählen";
-  el("tfgMitveanDropTitle").textContent = "Andere MITVEAN-PDF hineinziehen";
+  el("tfgMitveanDropTitle").textContent = "Andere Wagenlisten-PDF hineinziehen";
   el("tfgMitveanDropText").textContent = message;
 }
 function mapCoreorIso(lengthValue, heightValue, typeValue, ctrNo) {
@@ -1797,8 +1819,8 @@ function renderResult(data) {
     stats = [["Zugnummer",data.trainNo || "–"],["Wagen",data.wagonCount],["Container",data.unitCount],["Status",data.finalized ? "finalisiert" : "Wagenliste offen"]];
     columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["WAG_TYPE",r=>r.wagType ?? ""],["CTR_NO",r=>r.ctrNo],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo ?? ""]];
     previewRows = data.entries;
-    subtitle = data.finalized ? "TCM-IN + MITVEAN · Wagenreihung exakt aus der Wagenliste" : "Ausgangs-TCM geladen · MITVEAN-Wagenliste noch hinzufügen";
-    rules = [["Änderungen","nur WAG_SEQ_NO + WAG_TYPE"],["Reihenfolge","1:1 aus MITVEAN-LNr"],["Elisch-Reihung","wird ignoriert"],["Restliche TCM-Felder","unverändert"]];
+    subtitle = data.finalized ? "TCM-IN + MITVEAN · Wagenreihung exakt aus der Wagenliste" : "Ausgangs-TCM geladen · Wagenliste noch hinzufügen";
+    rules = [["Änderungen","nur WAG_SEQ_NO + WAG_TYPE"],["Reihenfolge","1:1 aus Wagenlisten-LNr"],["Elisch-Reihung","wird ignoriert"],["Restliche TCM-Felder","unverändert"]];
   } else if (mode === "hellmann") {
     previewLabel = data.unitCount + " Ladeeinheiten";
     stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen",data.wagonCount + " / 10"],["Ladeeinheiten",data.unitCount]];
@@ -1845,7 +1867,7 @@ function renderResult(data) {
     el("statusIcon").className = "status-icon warn";
     el("statusIcon").textContent = "!";
     if (mode === "hwlOutbound") el("resultTitle").textContent = "HWL-Ladeliste positionsgetreu verarbeitet";
-    else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert – Hinweise prüfen" : "TCM geladen – MITVEAN-Wagenliste fehlt";
+    else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert – Hinweise prüfen" : "TCM geladen – Wagenliste fehlt";
     else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release erstellt – Hinweise prüfen";
     else if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt – Hinweise prüfen" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
     else el("resultTitle").textContent = "Datei verarbeitet – bitte Hinweise prüfen";
@@ -1854,7 +1876,7 @@ function renderResult(data) {
     el("statusIcon").className = "status-icon ok";
     el("statusIcon").textContent = "✓";
     if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
-    else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert" : "TCM geladen – MITVEAN-Wagenliste fehlt";
+    else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert" : "TCM geladen – Wagenliste fehlt";
     else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release bereit";
     else el("resultTitle").textContent = "Datei erfolgreich verarbeitet";
   }
@@ -1879,13 +1901,13 @@ function renderTfgMitveanControl(data) {
   if (data.finalized && data.mitvean) {
     box.classList.add("done");
     icon.textContent = "✓";
-    el("tfgMitveanTitle").textContent = "MITVEAN-Wagenliste übernommen";
-    el("tfgMitveanText").textContent = "WAG_SEQ_NO wurde 1:1 aus der LNr der MITVEAN-Wagenliste übernommen und WAG_TYPE ergänzt. Die Elisch-Reihung wird dabei vollständig ignoriert; alle übrigen TCM-Felder bleiben unverändert.";
+    el("tfgMitveanTitle").textContent = "Wagenliste übernommen";
+    el("tfgMitveanText").textContent = "WAG_SEQ_NO wurde 1:1 aus der LNr der Wagenliste übernommen und WAG_TYPE ergänzt. Die Elisch-Reihung wird dabei vollständig ignoriert; alle übrigen TCM-Felder bleiben unverändert.";
     btn.textContent = "PDF ersetzen";
-    el("tfgMitveanDropTitle").textContent = "Andere MITVEAN-PDF hineinziehen";
+    el("tfgMitveanDropTitle").textContent = "Andere Wagenlisten-PDF hineinziehen";
     el("tfgMitveanDropText").textContent = data.mitvean.sourceName + " ist aktuell geladen";
     meta.innerHTML = [
-      ["MITVEAN-Wagen", data.mitvean.wagonCount],
+      ["Wagenlisten-Wagen", data.mitvean.wagonCount],
       ["Zug", data.mitvean.trainNo || data.trainNo || "–"],
       ["TCM-Container", data.unitCount],
       ["Geändert", "WAG_SEQ_NO + WAG_TYPE"],
@@ -1894,10 +1916,10 @@ function renderTfgMitveanControl(data) {
     ].map(([k,v]) => "<span>" + escapeHtml(k) + ": <b>" + escapeHtml(v) + "</b></span>").join("");
   } else {
     icon.textContent = "2";
-    el("tfgMitveanTitle").textContent = "Schritt 2 · MITVEAN-Wagenliste";
+    el("tfgMitveanTitle").textContent = "Schritt 2 · Wagenliste";
     el("tfgMitveanText").textContent = "Jetzt die PDF \"Liste Gleisinhalt\" hinzufügen. Das Tool matched die Wagennummern, dreht die physische Wagenreihenfolge und ergänzt den WAG_TYPE.";
     btn.textContent = "PDF auswählen";
-    el("tfgMitveanDropTitle").textContent = "MITVEAN-PDF hier hineinziehen";
+    el("tfgMitveanDropTitle").textContent = "Wagenlisten-PDF hier hineinziehen";
     el("tfgMitveanDropText").textContent = "Liste Gleisinhalt · alle vorhandenen Containerdaten bleiben unverändert";
     meta.innerHTML = "<span>Schritt 1: <b>TCM geladen</b></span><span>Schritt 2: <b>Wagenliste PDF</b></span>";
   }
@@ -2123,7 +2145,7 @@ function downloadExcel() {
       const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,COREOR_RELEASE_SHEET_NAME);
       XLSX.writeFile(wb,"Coreor_Release.xlsx",{bookType:"xlsx",compression:true});
     } else if (mode === "tfgFinalize") {
-      if (!parsedState.finalized) throw new Error("Bitte zuerst die MITVEAN-Wagenliste hinzufügen.");
+      if (!parsedState.finalized) throw new Error("Bitte zuerst die Wagenliste hinzufügen.");
       const matrix = [...parsedState.preamble.map(r => [...r]), [...parsedState.headers], ...parsedState.rows.map(r => [...r])];
       const ws = XLSX.utils.aoa_to_sheet(matrix, { cellDates:false });
       const headerExcelRow = parsedState.headerRow + 1;
