@@ -1381,7 +1381,145 @@ function medlogDateToGerman(value) {
   if (m) return m[1] + "." + m[2] + "." + m[3];
   m = text.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
   if (m) return m[1] + "." + m[2] + "." + m[3];
+  m = text.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  if (m) return m[1] + "." + m[2] + "." + m[3];
   return null;
+}
+
+function parseMedlogFallbackWagonlist(bytes, sourceName = "") {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  if (!wb.SheetNames.length) throw new Error("Die MEDLOG-Wagenliste enthält kein Tabellenblatt.");
+
+  const canonical = value => normalizeHeader(value).replace(/x000d/g, "");
+  let best = null;
+
+  for (const name of wb.SheetNames) {
+    const matrix = XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, defval:null, raw:true });
+    if (!matrix.length) continue;
+
+    let headerRow = -1;
+    let idx = null;
+    for (let r = 0; r < Math.min(matrix.length, 80); r++) {
+      const h = (matrix[r] || []).map(canonical);
+      const find = (...names) => h.findIndex(x => names.includes(x));
+      const candidate = {
+        wagon: find("wagennummer","wagonnumber","wagonno","wagennr"),
+        ctr: find("nhmcontainer","containernummer","containernumber","containerno","container"),
+        load: find("lading","beladingsgewicht","ladung","loadweight","weightton","gewichtton")
+      };
+      if (candidate.wagon >= 0 && candidate.ctr >= 0 && candidate.load >= 0) {
+        headerRow = r;
+        idx = candidate;
+        break;
+      }
+    }
+
+    if (headerRow >= 0) {
+      best = { name, matrix, headerRow, idx };
+      break;
+    }
+  }
+
+  if (!best) throw new Error("Kein MEDLOG-Wagenlistenformat mit Wagennummer, NHM/Container und Lading erkannt.");
+
+  const { name:sheetName, matrix, headerRow, idx } = best;
+  const warnings = [];
+  let trainNo = null;
+  let etaDate = null;
+
+  // Kopfbereich lesen: Trein Nummer / Datum. Zusätzlich Dateiname als Fallback.
+  for (let r = 0; r < Math.min(matrix.length, headerRow + 25); r++) {
+    const row = matrix[r] || [];
+    for (let c = 0; c < row.length; c++) {
+      const label = canonical(row[c]);
+      if (!trainNo && (label === "treinnummer" || label === "treinnummern" || label === "trainnumber")) {
+        for (let k = c + 1; k < Math.min(row.length, c + 6); k++) {
+          const n = toNumber(row[k]);
+          if (n !== null && n >= 1000 && n <= 999999) { trainNo = Number(n); break; }
+        }
+      }
+      if (!etaDate && (label === "datum" || label === "date")) {
+        for (let k = c + 1; k < Math.min(row.length, c + 6); k++) {
+          const d = medlogDateToGerman(row[k]);
+          if (d) { etaDate = d; break; }
+        }
+      }
+    }
+  }
+
+  if (!trainNo) {
+    const m = clean(sourceName).match(/(?:WL[_\s-]*)?(\d{4,6})\b/i);
+    if (m) trainNo = Number(m[1]);
+  }
+  if (!etaDate) {
+    const compact = clean(sourceName).match(/\b(\d{2})(\d{2})(\d{4})\b/);
+    if (compact) etaDate = compact[1] + "." + compact[2] + "." + compact[3];
+  }
+
+  let currentWagon = null;
+  let currentSeq = 0;
+  const wagonSeqByNo = new Map();
+  const entries = [];
+
+  for (let r = headerRow + 1; r < matrix.length; r++) {
+    const row = matrix[r] || [];
+
+    const rawWagon = clean(row[idx.wagon]);
+    const wagonDigits = rawWagon.replace(/\D/g, "");
+    if (wagonDigits.length >= 11 && wagonDigits.length <= 12) {
+      currentWagon = wagonDigits;
+      if (!wagonSeqByNo.has(currentWagon)) {
+        currentSeq++;
+        wagonSeqByNo.set(currentWagon, currentSeq);
+      }
+    }
+
+    const ctrNo = clean(row[idx.ctr]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) continue;
+
+    if (!currentWagon) {
+      warnings.push("Zeile " + (r + 1) + ": " + ctrNo + " konnte keinem Wagen zugeordnet werden.");
+      continue;
+    }
+
+    let loadTons = toNumber(row[idx.load]);
+    if (loadTons === null) {
+      warnings.push("Zeile " + (r + 1) + ": Für " + ctrNo + " fehlt das Ladegewicht.");
+      continue;
+    }
+
+    // Wagenliste liefert die reine Ladung in Tonnen.
+    // Für den Fallback setzen wir einen 45G0-Vollcontainer mit pauschal 4.000 kg Tara an.
+    const gross = Math.round(loadTons * 1000 + 4000);
+
+    entries.push({
+      wagonSeq: wagonSeqByNo.get(currentWagon),
+      wagonNo: currentWagon,
+      slot: null,
+      ctrNo,
+      iso: "45G0",
+      fe: "F",
+      gross,
+      loadTons
+    });
+  }
+
+  if (!entries.length) throw new Error("Keine Container in der MEDLOG-Wagenliste erkannt.");
+  if (!trainNo) throw new Error("Keine Zugnummer in der MEDLOG-Wagenliste erkannt.");
+  if (!etaDate) throw new Error("Kein Datum in der MEDLOG-Wagenliste erkannt.");
+
+  return {
+    trainNo,
+    etdDate: etaDate,
+    etaDate,
+    entries,
+    wagonCount: wagonSeqByNo.size,
+    unitCount: entries.length,
+    fallbackWeightCount: 0,
+    sourceSheet: sheetName,
+    sourceFormat: "Fallback-Wagenliste",
+    warnings
+  };
 }
 
 function parseMedlogInbound(bytes) {
