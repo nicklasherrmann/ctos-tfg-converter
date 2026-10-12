@@ -1313,11 +1313,19 @@ function deriveCoreorReleaseLiner(ie, reeder, special) {
   if (flow === "IMP") return "TFG";
   if (flow !== "EXP") return "";
   if (line.includes("hapag")) return "HAP";
+  if (line.includes("msc")) return "MSC";
   if (line.includes("evergreen")) return "TFG";
   if (line === "cma") {
     if (note.includes("stationaryatctos")) return "TFG";
     if (note.includes("tomorrowsinboundtrain") || note.includes("nor")) return "HAP";
   }
+  return "TFG";
+}
+
+function deriveCoreorReleaseCustomer(ie, reeder) {
+  const flow = clean(ie).toUpperCase();
+  const line = normalizeHeader(reeder);
+  if (flow === "EXP" && line.includes("msc")) return "MSC";
   return "TFG";
 }
 
@@ -1396,7 +1404,7 @@ function parseCoreorReleaseSource(bytes) {
       fe,
       releaseOrder,
       liner:deriveCoreorReleaseLiner(ie, reeder, special),
-      customer:"TFG",
+      customer:deriveCoreorReleaseCustomer(ie, reeder),
       billOfLading:customerRef,
       comment:ikNo,
       ie,
@@ -2153,7 +2161,7 @@ function renderResult(data) {
     columns = [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["I/E",r=>r.ie],["FE",r=>r.fe],["RELEASE_ORDER",r=>r.releaseOrder],["LINER",r=>r.liner],["BILL_OF_LADING",r=>r.billOfLading]];
     previewRows = data.entries;
     subtitle = "CTOS-Dispoliste → COREOR Release";
-    rules = [["IMP","FE F · Release = IK.NR"],["EXP","FE E · Release = PICKUP REF."],["CUSTOMER","TFG"],["COMMENTS","IK.NR"]];
+    rules = [["IMP","FE F · Release = IK.NR"],["EXP","FE E · Release = PICKUP REF."],["MSC Export","LINER = MSC · CUSTOMER = MSC"],["sonst CUSTOMER","TFG"],["COMMENTS","IK.NR"]];
   } else if (mode === "coreorCoparn") {
     previewLabel = data.unitCount + " COPARN-Container";
     stats = [["COPARN",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Nicht Terminal",data.skippedCount]];
@@ -2420,7 +2428,7 @@ function makeCoreorReleaseRows(data) {
     e.fe || null,
     e.releaseOrder ?? null,
     e.liner || null,
-    "TFG",
+    e.customer || "TFG",
     e.billOfLading ?? null,
     null,
     e.comment ?? null,
