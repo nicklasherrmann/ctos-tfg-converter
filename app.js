@@ -350,7 +350,7 @@ function applyModeUi() {
   } else if (mode === "tfgFinalize") {
     document.querySelector(".hero h2").textContent = "TFG-TCM finalisieren.";
     document.querySelector(".dropzone h3").textContent = "TCM-IN Vorher hier ablegen";
-    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · danach MITVEAN Liste Gleisinhalt als PDF";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · danach Wagenliste als PDF (MITVEAN oder MITSVKI)";
     document.querySelector(".working strong").textContent = "TCM-IN wird eingelesen…";
     document.querySelector(".working span").textContent = "Die vorhandenen Containerdaten bleiben unverändert; Schritt 2 ergänzt Wagenfolge und WAG_TYPE.";
     heroFrom.textContent = "XLSX + PDF";
@@ -1110,7 +1110,7 @@ async function parseMitveanPdf(bytes) {
     }
   }
 
-  if (!wagons.size) throw new Error("Keine Wagenzeilen erkannt. Unterstützt werden MITVEAN/MITSVKI-Wagenliste und MITSVKI „Liste Eingangszug“.");
+  if (!wagons.size) throw new Error("Keine Wagenzeilen erkannt. Unterstützt werden MITVEAN „Liste Gleisinhalt“ und MITSVKI „Liste Eingangszug“.");
   const trainNo = trainNos.size === 1 ? [...trainNos][0] : null;
   if (trainNos.size > 1) warnings.push("Mehrere Zugnummern in der Wagenlisten-PDF erkannt: " + [...trainNos].join(", ") + ".");
   return { wagons, wagonCount:wagons.size, maxLnr, trainNo, warnings };
@@ -1917,10 +1917,10 @@ function renderTfgMitveanControl(data) {
   } else {
     icon.textContent = "2";
     el("tfgMitveanTitle").textContent = "Schritt 2 · Wagenliste";
-    el("tfgMitveanText").textContent = "Jetzt die PDF \"Liste Gleisinhalt\" hinzufügen. Das Tool matched die Wagennummern, dreht die physische Wagenreihenfolge und ergänzt den WAG_TYPE.";
+    el("tfgMitveanText").textContent = "Jetzt die Wagenlisten-PDF hinzufügen. Unterstützt werden MITVEAN „Liste Gleisinhalt“ und MITSVKI „Liste Eingangszug“. Die WAG_SEQ_NO wird exakt aus der LNr übernommen und WAG_TYPE ergänzt.";
     btn.textContent = "PDF auswählen";
     el("tfgMitveanDropTitle").textContent = "Wagenlisten-PDF hier hineinziehen";
-    el("tfgMitveanDropText").textContent = "Liste Gleisinhalt · alle vorhandenen Containerdaten bleiben unverändert";
+    el("tfgMitveanDropText").textContent = "MITVEAN Liste Gleisinhalt oder MITSVKI Liste Eingangszug · Containerdaten bleiben unverändert";
     meta.innerHTML = "<span>Schritt 1: <b>TCM geladen</b></span><span>Schritt 2: <b>Wagenliste PDF</b></span>";
   }
 }
