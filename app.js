@@ -247,6 +247,7 @@ function setupModeSwitcher() {
   el("modeHwlOutbound").addEventListener("click", () => setMode("hwlOutbound"));
   el("modeMedInbound").addEventListener("click", () => setMode("medInbound"));
   el("modeCoreorRelease").addEventListener("click", () => setMode("coreorRelease"));
+  el("modeCoreorCoparn").addEventListener("click", () => setMode("coreorCoparn"));
   el("hellmannPart2Btn").addEventListener("click", () => el("hellmannPart2Input").click());
   el("hellmannPart2Input").addEventListener("change", () => {
     const file = el("hellmannPart2Input").files?.[0];
