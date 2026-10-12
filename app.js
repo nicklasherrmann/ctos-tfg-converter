@@ -101,6 +101,15 @@ const COREOR_RELEASE_HEADERS = [
   "COMMENTS","CALL_SIGN","PASSWORD"
 ];
 const COREOR_RELEASE_SHEET_NAME = "sheet1";
+const COREOR_COPARN_HEADERS = [
+  "TRN_NO","ETD","CTR_NO","ISO","FE","GROSS","CATEGORY","LINER","CUSTOMER_ID","FPOD","POD","PLACE_OF_DELIVERY","LLPOD","BOOK_NO","BILL_OF_LADING",
+  "CALL_SIGN","TARE","IN_VOYAGE","OUT_VOYAGE","EXIT_CALL_SIGN","EXIT_OUT_VOYAGE","ETD_CUST","POL","DUMMY_NO","ACTION_CODE","RELEASE_ORDER",
+  "SEAL_NO","SEAL_TYPE","SEAL_NO2","SEAL_TYPE2","SEAL_NO3","SEAL_TYPE3","SEAL_NO4","SEAL_TYPE4","SEAL_NO5","SEAL_TYPE5",
+  "SPECIAL_HANDLING_CD","REEFER_TEMP","TEMP_UNIT","OOG_TOP","OOG_LEFT","OOG_RIGHT","OOG_FRONT","OOG_BACK",
+  "DGS_CLASS","UN_NO","DGS_CLASS2","UN_NO2","DGS_CLASS3","UN_NO3","DGS_CLASS4","UN_NO4","DGS_CLASS5","UN_NO5",
+  "COMMENTS","DAMAGE_CD","DAMAGE_CD2","DAMAGE_CD3","DAMAGE_CD4","DAMAGE_CD5","VGM_FLG","VGM_GROSS","VGM_AM"
+];
+const COREOR_COPARN_SHEET_NAME = "COPARN-Export-Example-RBS";
 const COREOR_ISO_OVERRIDES = { UETU6387455:"45G4" };
 
 const SHEET_NAME = "SETG-TCM-COMBITRAC-20210827-610";
@@ -213,7 +222,8 @@ function setupModeSwitcher() {
     '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">PDF + Zusatzliste → TCM Excel</span></button>' +
     '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
     '<button id="modeMedInbound" data-brand="med" class="mode-btn" type="button"><span class="mode-kicker">MED</span><span class="mode-title">Eingang</span><span class="mode-desc">Train Composition → TCM Excel</span></button>' +
-    '<button id="modeCoreorRelease" data-brand="ctos" class="mode-btn" type="button"><span class="mode-kicker">CTOS</span><span class="mode-title">COREOR Release</span><span class="mode-desc">Dispoliste → Release Excel</span></button></div>';
+    '<button id="modeCoreorRelease" data-brand="ctos" class="mode-btn" type="button"><span class="mode-kicker">CTOS</span><span class="mode-title">COREOR Release</span><span class="mode-desc">Dispoliste → Release Excel</span></button>' +
+    '<button id="modeCoreorCoparn" data-brand="ctos" class="mode-btn" type="button"><span class="mode-kicker">CTOS</span><span class="mode-title">COREOR COPARN</span><span class="mode-desc">Dispoliste → COPARN Excel</span></button></div>';
   panel.parentNode.insertBefore(shell, panel);
   const part2 = document.createElement("div");
   part2.id = "hellmannPart2";
@@ -302,7 +312,7 @@ function selectBrand(brand) {
   document.querySelector(".hero").classList.remove("hidden");
   panel.classList.remove("hidden");
   document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("hidden", btn.dataset.brand !== brand));
-  document.querySelector(".mode-switch").classList.toggle("single", brand === "med" || brand === "ctos");
+  document.querySelector(".mode-switch").classList.toggle("single", brand === "med");
   document.querySelector(".mode-switch").classList.toggle("triple", brand === "tfg");
   const titles = { tfg:"TFG Converter", hwl:"HWL Converter", med:"MEDLOG Converter", ctos:"CTOS Dispoliste" };
   const subtitles = { tfg:"TFG Import & Export", hwl:"HWL Import & Export", med:"MEDLOG Eingang", ctos:"COREOR Erstellung" };
@@ -320,15 +330,19 @@ function setMode(nextMode) {
     hwlOutbound:"modeHwlOutbound",
     medInbound:"modeMedInbound",
     coreorRelease:"modeCoreorRelease",
+    coreorCoparn:"modeCoreorCoparn",
     tfgFinalize:"modeTfgFinalize"
   };
-  ["modeInbound","modeOutbound","modeTfgFinalize","modeHellmann","modeHwlOutbound","modeMedInbound","modeCoreorRelease"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
+  ["modeInbound","modeOutbound","modeTfgFinalize","modeHellmann","modeHwlOutbound","modeMedInbound","modeCoreorRelease","modeCoreorCoparn"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
   reset();
   applyModeUi();
 }
 
 function applyModeUi() {
-  downloadBtn.querySelector("span").textContent = mode === "tfgFinalize" ? "Finale TCM erstellen" : "Excel erstellen";
+  downloadBtn.querySelector("span").textContent =
+    mode === "tfgFinalize" ? "Finale TCM erstellen" :
+    mode === "coreorCoparn" ? "COPARN erstellen" :
+    mode === "coreorRelease" ? "Release erstellen" : "Excel erstellen";
   const expectsPdf = mode === "inbound" || mode === "hellmann";
   fileInput.accept = mode === "hwlOutbound" ? ".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : (expectsPdf ? ".pdf,application/pdf" : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel");
   if (mode === "inbound") {
@@ -379,6 +393,14 @@ function applyModeUi() {
     document.querySelector(".working span").textContent = "Container, ISO, Import/Export, Release Order und Referenzen werden erkannt.";
     heroFrom.textContent = "XLSX";
     heroText.textContent = "Dispoliste hochladen, COREOR-Release-Daten prüfen und die fertige Coreor_Release-Datei herunterladen.";
+  } else if (mode === "coreorCoparn") {
+    document.querySelector(".hero h2").textContent = "COREOR COPARN erstellen.";
+    document.querySelector(".dropzone h3").textContent = "CTOS-Dispoliste hier ablegen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · nur DROPOF = CTOS (TERMINAL) wird übernommen";
+    document.querySelector(".working strong").textContent = "Dispoliste wird für COPARN ausgewertet…";
+    document.querySelector(".working span").textContent = "Terminal-Container, ISO, I/E, Gewicht, Referenzen und Reefer-Status werden erkannt.";
+    heroFrom.textContent = "XLSX";
+    heroText.textContent = "Dispoliste hochladen. Das Tool erzeugt die COREOR-COPARN mit den festen TFG-Werten und automatischer NOR/KÜHLEN-Logik.";
   } else {
     document.querySelector(".hero h2").textContent = "HWL-Ausgang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "HWL-Ladeliste oder Brückenplan hier ablegen";
@@ -495,6 +517,9 @@ async function handleFile(file) {
     } else if (mode === "coreorRelease") {
       const parsed = parseCoreorReleaseSource(bytes);
       parsedState = { ...parsed, sourceName:file.name, mode };
+    } else if (mode === "coreorCoparn") {
+      const parsed = parseCoreorCoparnSource(bytes);
+      parsedState = { ...parsed, sourceName:file.name, mode };
     } else if (mode === "tfgFinalize") {
       const parsed = parseTfgTcmSource(bytes);
       parsedState = { ...parsed, sourceName:file.name, baseSourceName:file.name, mode };
@@ -514,7 +539,7 @@ function showError(message) {
   const title = errorBox.querySelector("h3");
   if (title) {
     if (mode === "hwlOutbound") title.textContent = "HWL-Datei konnte nicht verarbeitet werden";
-    else if (mode === "outbound" || mode === "medInbound" || mode === "coreorRelease" || mode === "tfgFinalize") title.textContent = "Excel-Datei konnte nicht verarbeitet werden";
+    else if (mode === "outbound" || mode === "medInbound" || mode === "coreorRelease" || mode === "coreorCoparn" || mode === "tfgFinalize") title.textContent = "Excel-Datei konnte nicht verarbeitet werden";
     else title.textContent = "PDF konnte nicht verarbeitet werden";
   }
   el("errorMessage").textContent = message;
@@ -1389,6 +1414,132 @@ function parseCoreorReleaseSource(bytes) {
     warnings
   };
 }
+function deriveCoreorCoparnComment(typeValue, specialValue) {
+  const type = clean(typeValue).toUpperCase();
+  const special = normalizeHeader(specialValue);
+  const isReefer = type === "RF" || type === "RFHC" || type.includes("REEFER");
+  if (!isReefer) return "";
+  if (special.includes("kuhlen") || special.includes("kuehlen") || special.includes("cool")) return "KÜHLEN";
+  return "NOR";
+}
+
+function parseCoreorCoparnSource(bytes) {
+  const wb = XLSX.read(bytes, { type:"array", cellDates:false, raw:true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("Die Dispoliste enthält kein Tabellenblatt.");
+  const matrix = XLSX.utils.sheet_to_json(ws, { header:1, defval:null, raw:true });
+  if (!matrix.length) throw new Error("Die Dispoliste ist leer.");
+
+  let headerRow = -1;
+  let idx = null;
+  for (let r = 0; r < Math.min(matrix.length, 20); r++) {
+    const h = (matrix[r] || []).map(normalizeHeader);
+    const find = (...names) => h.findIndex(x => names.includes(x));
+    const candidate = {
+      ik: find("iknr"),
+      customerRef: find("kundenref"),
+      ie: find("ie"),
+      length: find("la"),
+      height: find("ho"),
+      type: find("cttyp"),
+      ctr: find("ctnr"),
+      gross: find("bruttogew"),
+      special: find("besonderheiten"),
+      dropoff: find("dropof")
+    };
+    if (
+      candidate.ik >= 0 && candidate.customerRef >= 0 && candidate.ie >= 0 &&
+      candidate.length >= 0 && candidate.type >= 0 && candidate.ctr >= 0 &&
+      candidate.gross >= 0 && candidate.dropoff >= 0
+    ) {
+      headerRow = r;
+      idx = candidate;
+      break;
+    }
+  }
+  if (headerRow < 0) throw new Error("Die benötigten Spalten der CTOS-Dispoliste konnten für COPARN nicht erkannt werden.");
+
+  const entries = [];
+  const warnings = [];
+  let skippedCount = 0;
+  let importCount = 0;
+  let exportCount = 0;
+  let reeferCount = 0;
+  let norCount = 0;
+  let coolCount = 0;
+
+  for (let r = headerRow + 1; r < matrix.length; r++) {
+    const row = matrix[r] || [];
+    const ctrNo = clean(row[idx.ctr]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!ctrNo) continue;
+
+    const dropoff = clean(row[idx.dropoff]);
+    if (normalizeHeader(dropoff) !== "ctosterminal") {
+      skippedCount++;
+      continue;
+    }
+
+    const ie = clean(row[idx.ie]).toUpperCase();
+    const ikNo = row[idx.ik] === null || row[idx.ik] === undefined || row[idx.ik] === "" ? null : row[idx.ik];
+    const customerRef = row[idx.customerRef] === null || row[idx.customerRef] === undefined || row[idx.customerRef] === "" ? null : row[idx.customerRef];
+    const gross = toNumber(row[idx.gross]);
+    const type = clean(row[idx.type]).toUpperCase();
+    const special = idx.special >= 0 ? clean(row[idx.special]) : "";
+    const iso = mapCoreorIso(row[idx.length], idx.height >= 0 ? row[idx.height] : null, row[idx.type], ctrNo);
+    const comment = deriveCoreorCoparnComment(type, special);
+
+    let fe = "";
+    if (ie === "IMP") {
+      fe = "E";
+      importCount++;
+    } else if (ie === "EXP") {
+      fe = "F";
+      exportCount++;
+    } else {
+      warnings.push("Zeile " + (r + 1) + ": I/E ist bei " + ctrNo + " weder IMP noch EXP.");
+    }
+
+    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) warnings.push("Zeile " + (r + 1) + ": Containernummer " + ctrNo + " hat ein unerwartetes Format.");
+    if (!iso) warnings.push("Zeile " + (r + 1) + ": ISO konnte für " + ctrNo + " nicht aus LA/HO/CT.TYP abgeleitet werden.");
+    if (gross === null) warnings.push("Zeile " + (r + 1) + ": BRUTTOGEW. fehlt bei " + ctrNo + ".");
+    if (ikNo === null || ikNo === "") warnings.push("Zeile " + (r + 1) + ": IK.NR fehlt bei " + ctrNo + ".");
+
+    if (type === "RF" || type === "RFHC" || type.includes("REEFER")) {
+      reeferCount++;
+      if (comment === "KÜHLEN") coolCount++;
+      else if (comment === "NOR") norCount++;
+    }
+
+    entries.push({
+      ctrNo,
+      iso,
+      fe,
+      gross,
+      bookNo:ikNo,
+      billOfLading:customerRef,
+      comment,
+      ie,
+      type,
+      special,
+      sourceRow:r + 1
+    });
+  }
+
+  if (!entries.length) throw new Error("Keine Container mit DROPOF = CTOS (TERMINAL) in der Dispoliste erkannt.");
+
+  return {
+    entries,
+    unitCount:entries.length,
+    importCount,
+    exportCount,
+    skippedCount,
+    reeferCount,
+    norCount,
+    coolCount,
+    warnings
+  };
+}
+
 function medlogDateToGerman(value) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") {
@@ -2002,6 +2153,13 @@ function renderResult(data) {
     previewRows = data.entries;
     subtitle = "CTOS-Dispoliste → COREOR Release";
     rules = [["IMP","FE F · Release = IK.NR"],["EXP","FE E · Release = PICKUP REF."],["CUSTOMER","TFG"],["COMMENTS","IK.NR"]];
+  } else if (mode === "coreorCoparn") {
+    previewLabel = data.unitCount + " COPARN-Container";
+    stats = [["COPARN",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Nicht Terminal",data.skippedCount]];
+    columns = [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["I/E",r=>r.ie],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["BOOK_NO",r=>r.bookNo],["COMMENTS",r=>r.comment || ""]];
+    previewRows = data.entries;
+    subtitle = "CTOS-Dispoliste → COREOR COPARN";
+    rules = [["Auswahl","nur DROPOF = CTOS (TERMINAL)"],["IMP","FE E"],["EXP","FE F"],["GROSS","BRUTTOGEW. aus Dispoliste"],["Reefer","Kühlung → KÜHLEN · sonst NOR"],["ETD","29.01.2031 · 15:00"],["POD","ANB"]];
   } else {
     previewLabel = "40 Verladeplätze";
     stats = [["Zugnummer","50020"],["ETD",data.date + " 20:00"],["Beladen",data.unitCount + " / 40"],["Nicht verladen",data.ignoredCount]];
@@ -2029,6 +2187,7 @@ function renderResult(data) {
     if (mode === "hwlOutbound") el("resultTitle").textContent = "HWL-Ladeliste positionsgetreu verarbeitet";
     else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert – Hinweise prüfen" : "TCM geladen – Wagenliste fehlt";
     else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release erstellt – Hinweise prüfen";
+    else if (mode === "coreorCoparn") el("resultTitle").textContent = "COREOR COPARN erstellt – Hinweise prüfen";
     else if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt – Hinweise prüfen" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
     else el("resultTitle").textContent = "Datei verarbeitet – bitte Hinweise prüfen";
   } else {
@@ -2038,6 +2197,7 @@ function renderResult(data) {
     if (mode === "hellmann") el("resultTitle").textContent = data.part2 ? "HWL-Eingang vollständig ergänzt" : "Teil 1 verarbeitet – Wagen 7–10 vorbereitet";
     else if (mode === "tfgFinalize") el("resultTitle").textContent = data.finalized ? "TFG-TCM finalisiert" : "TCM geladen – Wagenliste fehlt";
     else if (mode === "coreorRelease") el("resultTitle").textContent = "COREOR Release bereit";
+    else if (mode === "coreorCoparn") el("resultTitle").textContent = "COREOR COPARN bereit";
     else el("resultTitle").textContent = "Datei erfolgreich verarbeitet";
   }
   el("resetBtn").textContent = "Andere Datei";
@@ -2229,6 +2389,29 @@ function makeMedlogRows(data) {
     return HEADERS.map(h => row[h]);
   });
 }
+function makeCoreorCoparnRows(data) {
+  const etd = excelSerialAtTime("29.01.2031", 15);
+  return data.entries.map(e => {
+    const row = Object.fromEntries(COREOR_COPARN_HEADERS.map(h => [h, null]));
+    Object.assign(row, {
+      TRN_NO:"DMYTFG",
+      ETD:etd,
+      CTR_NO:e.ctrNo,
+      ISO:e.iso || null,
+      FE:e.fe || null,
+      GROSS:e.gross,
+      CATEGORY:"E",
+      LINER:"TFG",
+      CUSTOMER_ID:"TFG",
+      POD:"ANB",
+      PLACE_OF_DELIVERY:"ANB",
+      BOOK_NO:e.bookNo,
+      BILL_OF_LADING:e.billOfLading,
+      COMMENTS:e.comment || null
+    });
+    return COREOR_COPARN_HEADERS.map(h => row[h]);
+  });
+}
 function makeCoreorReleaseRows(data) {
   return data.entries.map(e => [
     e.ctrNo,
@@ -2304,6 +2487,20 @@ function downloadExcel() {
       ws["!cols"]=COREOR_RELEASE_HEADERS.map((h,i)=>({wch:i===0?16:i===3?18:i===6?22:i===8?16:Math.min(Math.max(h.length+2,10),22)}));
       const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,COREOR_RELEASE_SHEET_NAME);
       XLSX.writeFile(wb,"Coreor_Release.xlsx",{bookType:"xlsx",compression:true});
+    } else if (mode === "coreorCoparn") {
+      const rows = makeCoreorCoparnRows(parsedState);
+      const ws = XLSX.utils.aoa_to_sheet([COREOR_COPARN_HEADERS, ...rows], { cellDates:false });
+      for (let r=2;r<=rows.length+1;r++){
+        const etd=ws["B"+r]; if(etd){etd.t="n";etd.z="dd.mm.yyyy hh:mm";}
+        const ctr=ws["C"+r]; if(ctr) ctr.t="s";
+        const book=ws["N"+r]; if(book && typeof book.v === "string") book.t="s";
+        const bol=ws["O"+r]; if(bol && typeof bol.v === "string") bol.t="s";
+      }
+      ws["!cols"]=COREOR_COPARN_HEADERS.map((h,i)=>({wch:
+        i===1?19:i===2?16:i===13||i===14?22:i===54?14:Math.min(Math.max(h.length+2,10),22)
+      }));
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,COREOR_COPARN_SHEET_NAME);
+      XLSX.writeFile(wb,"Coreor_COPARN.xlsx",{bookType:"xlsx",compression:true});
     } else if (mode === "tfgFinalize") {
       if (!parsedState.finalized) throw new Error("Bitte zuerst die Wagenliste hinzufügen.");
       const matrix = [...parsedState.preamble.map(r => [...r]), [...parsedState.headers], ...parsedState.rows.map(r => [...r])];
