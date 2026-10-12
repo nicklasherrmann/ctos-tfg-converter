@@ -389,11 +389,11 @@ function applyModeUi() {
   } else if (mode === "coreorRelease") {
     document.querySelector(".hero h2").textContent = "COREOR Release erstellen.";
     document.querySelector(".dropzone h3").textContent = "CTOS-Dispoliste hier ablegen";
-    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · alle Dispozeilen werden in COREOR Release übernommen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · noch nicht eingetroffene Container werden automatisch ausgelassen";
     document.querySelector(".working strong").textContent = "Dispoliste wird ausgewertet…";
     document.querySelector(".working span").textContent = "Container, ISO, Import/Export, Release Order und Referenzen werden erkannt.";
     heroFrom.textContent = "XLSX";
-    heroText.textContent = "Dispoliste hochladen, COREOR-Release-Daten prüfen und die fertige Coreor_Release-Datei herunterladen.";
+    heroText.textContent = "Dispoliste hochladen. Container mit „will arrive monday morning“ werden noch nicht released und automatisch ausgelassen.";
   } else if (mode === "coreorCoparn") {
     document.querySelector(".hero h2").textContent = "COREOR COPARN erstellen.";
     document.querySelector(".dropzone h3").textContent = "CTOS-Dispoliste hier ablegen";
@@ -1365,6 +1365,7 @@ function parseCoreorReleaseSource(bytes) {
   const warnings = [];
   let importCount = 0;
   let exportCount = 0;
+  let skippedNotArrivedCount = 0;
 
   for (let r = headerRow + 1; r < matrix.length; r++) {
     const row = matrix[r] || [];
@@ -1377,6 +1378,14 @@ function parseCoreorReleaseSource(bytes) {
     const customerRef = row[idx.customerRef] === null || row[idx.customerRef] === undefined || row[idx.customerRef] === "" ? null : row[idx.customerRef];
     const reeder = idx.reeder >= 0 ? clean(row[idx.reeder]) : "";
     const special = idx.special >= 0 ? clean(row[idx.special]) : "";
+
+    // Container, die laut Dispoliste erst am Montagmorgen eintreffen,
+    // dürfen noch nicht in die COREOR Release übernommen werden.
+    if (normalizeHeader(special).includes("arrivemondaymorning")) {
+      skippedNotArrivedCount++;
+      continue;
+    }
+
     const iso = mapCoreorIso(row[idx.length], idx.height >= 0 ? row[idx.height] : null, row[idx.type], ctrNo);
 
     if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) warnings.push("Zeile " + (r + 1) + ": Containernummer " + ctrNo + " hat ein unerwartetes Format.");
@@ -1420,6 +1429,7 @@ function parseCoreorReleaseSource(bytes) {
     unitCount:entries.length,
     importCount,
     exportCount,
+    skippedNotArrivedCount,
     warnings
   };
 }
@@ -2156,12 +2166,12 @@ function renderResult(data) {
       ? [["LINER","MED"],["ETA","Listendatum · 06:00"],["ISO","45G0"],["FE","F"],["GROSS","Lading × 1.000 + 4.000 kg Tara"]]
       : [["LINER","MED"],["ETA","+1 Tag · 06:00"],["ISO","aus Quelle"],["Fehlendes GROSS","10.000 kg"]];
   } else if (mode === "coreorRelease") {
-    previewLabel = data.unitCount + " Container";
-    stats = [["Container",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Ausgabe","COREOR Release"]];
+    previewLabel = data.unitCount + " Release-Container";
+    stats = [["Release",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Zurückgestellt",data.skippedNotArrivedCount || 0]];
     columns = [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["I/E",r=>r.ie],["FE",r=>r.fe],["RELEASE_ORDER",r=>r.releaseOrder],["LINER",r=>r.liner],["BILL_OF_LADING",r=>r.billOfLading]];
     previewRows = data.entries;
     subtitle = "CTOS-Dispoliste → COREOR Release";
-    rules = [["IMP","FE F · Release = IK.NR"],["EXP","FE E · Release = PICKUP REF."],["MSC Export","LINER = MSC · CUSTOMER = MSC"],["sonst CUSTOMER","TFG"],["COMMENTS","IK.NR"]];
+    rules = [["IMP","FE F · Release = IK.NR"],["EXP","FE E · Release = PICKUP REF."],["Noch nicht da","„will arrive monday morning“ → nicht releasen"],["MSC Export","LINER = MSC · CUSTOMER = MSC"],["sonst CUSTOMER","TFG"],["COMMENTS","IK.NR"]];
   } else if (mode === "coreorCoparn") {
     previewLabel = data.unitCount + " COPARN-Container";
     stats = [["COPARN",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Nicht Terminal",data.skippedCount]];
