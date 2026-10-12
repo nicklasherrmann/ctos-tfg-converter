@@ -365,12 +365,12 @@ function applyModeUi() {
     heroText.textContent = "Zuerst die Landshut-PDF hochladen. Anschließend kann die separate Regensburg-Liste für Wagen 7–10 direkt ergänzt werden.";
   } else if (mode === "medInbound") {
     document.querySelector(".hero h2").textContent = "MEDLOG-Eingang konvertieren.";
-    document.querySelector(".dropzone h3").textContent = "MEDLOG Train Composition hier ablegen";
-    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · Train Composition und Realised Train Composition werden automatisch erkannt";
+    document.querySelector(".dropzone h3").textContent = "MEDLOG-Datei hier ablegen";
+    document.querySelector(".file-hint").textContent = "Excel (.xlsx/.xls) · Train Composition, Realised Train Composition und Fallback-Wagenliste";
     document.querySelector(".working strong").textContent = "MEDLOG-Datei wird ausgewertet…";
-    document.querySelector(".working span").textContent = "Format, Outbound-Voyage, Wagen, Container, ISO-Codes und Gewichte werden automatisch erkannt.";
-    heroFrom.textContent = "XLSX";
-    heroText.textContent = "MEDLOG Train Composition hochladen. ISO-Codes werden vorerst unverändert aus der Quelle übernommen; fehlendes Gewicht wird mit 10.000 kg ergänzt.";
+    document.querySelector(".working span").textContent = "Dateiformat, Zug, Wagen, Container und Gewichte werden automatisch erkannt.";
+    heroFrom.textContent = "XLSX / XLS";
+    heroText.textContent = "MEDLOG-Datei hochladen. Bevorzugt wird die Train Composition; falls nur die Wagenliste vorliegt, nutzt das Tool automatisch den 45G0-Fallback.";
   } else if (mode === "coreorRelease") {
     document.querySelector(".hero h2").textContent = "COREOR Release erstellen.";
     document.querySelector(".dropzone h3").textContent = "CTOS-Dispoliste hier ablegen";
@@ -471,7 +471,26 @@ async function handleFile(file) {
       if (!parsed.entries.length) throw new Error("Keine Ladeeinheiten für Landshut → Osnabrück erkannt.");
       parsedState = { ...parsed, sourceName:file.name, part1SourceName:file.name, part1Warnings:[...(parsed.warnings || [])], mode };
     } else if (mode === "medInbound") {
-      const parsed = parseMedlogInbound(bytes);
+      let parsed;
+      let primaryError = null;
+      try {
+        parsed = parseMedlogInbound(bytes);
+      } catch (err) {
+        primaryError = err;
+        try {
+          parsed = parseMedlogFallbackWagonlist(bytes, file.name);
+          parsed.warnings = [
+            "Fallback-Wagenliste verwendet: ISO = 45G0, FE = F, Tara = 4.000 kg, ETA-Datum = Listendatum.",
+            ...(parsed.warnings || [])
+          ];
+        } catch (fallbackErr) {
+          throw new Error(
+            (primaryError?.message || "Train Composition nicht erkannt.") +
+            " Fallback-Wagenliste ebenfalls nicht erkannt: " +
+            (fallbackErr?.message || fallbackErr)
+          );
+        }
+      }
       parsedState = { ...parsed, sourceName:file.name, mode };
     } else if (mode === "coreorRelease") {
       const parsed = parseCoreorReleaseSource(bytes);
@@ -1967,12 +1986,15 @@ function renderResult(data) {
     subtitle = data.part2 ? "Landshut + Regensburg → Osnabrück" : "Landshut → Osnabrück · Wagen 7–10 vorbereitet";
     rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Teil 2",data.part2 ? "ergänzt" : "offen"]];
   } else if (mode === "medInbound") {
+    const isFallback = data.sourceFormat === "Fallback-Wagenliste";
     previewLabel = data.unitCount + " Container";
     stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 06:00"],["Wagen",data.wagonCount],["Container",data.unitCount]];
     columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)]];
     previewRows = data.entries;
-    subtitle = "MEDLOG Outbound → CTOS Eingang";
-    rules = [["LINER","MED"],["ETA","+1 Tag · 06:00"],["ISO","aus Quelle"],["Fehlendes GROSS","10.000 kg"]];
+    subtitle = isFallback ? "MEDLOG Fallback-Wagenliste → CTOS Eingang" : "MEDLOG Outbound → CTOS Eingang";
+    rules = isFallback
+      ? [["LINER","MED"],["ETA","Listendatum · 06:00"],["ISO","45G0"],["FE","F"],["GROSS","Lading × 1.000 + 4.000 kg Tara"]]
+      : [["LINER","MED"],["ETA","+1 Tag · 06:00"],["ISO","aus Quelle"],["Fehlendes GROSS","10.000 kg"]];
   } else if (mode === "coreorRelease") {
     previewLabel = data.unitCount + " Container";
     stats = [["Container",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Ausgabe","COREOR Release"]];
