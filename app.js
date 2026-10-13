@@ -391,7 +391,7 @@ function applyModeUi() {
     document.querySelector(".working strong").textContent = "Dispoliste wird ausgewertet…";
     document.querySelector(".working span").textContent = "Container, ISO, Import/Export, Release Order und Referenzen werden erkannt.";
     heroFrom.textContent = "XLSX";
-    heroText.textContent = "Dispoliste hochladen. Container mit „will arrive monday morning“ werden noch nicht released und automatisch ausgelassen.";
+    heroText.textContent = "Dispoliste als Excel-Datei hochladen. Anschließend wird die COREOR-Release-Datei automatisch erstellt.";
   } else if (mode === "coreorCoparn") {
     document.querySelector(".hero h2").textContent = "COREOR COPARN erstellen.";
     document.querySelector(".dropzone h3").textContent = "CTOS-Dispoliste hier ablegen";
