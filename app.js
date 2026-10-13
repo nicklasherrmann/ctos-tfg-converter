@@ -205,7 +205,7 @@ function setupModeSwitcher() {
   const landing = document.createElement("section");
   landing.id = "brandLanding";
   landing.className = "brand-landing";
-  landing.innerHTML = '<div class="brand-intro"><div class="eyebrow">CTOS TOOL</div><h2>Partner auswählen.</h2><p>Wähle den gewünschten Verkehrspartner. Anschließend stehen dir die passenden Funktionen für Eingang und Ausgang zur Verfügung.</p></div>' +
+  landing.innerHTML = '<div class="brand-intro"><div class="eyebrow">NEXORA</div><h2>Partner auswählen.</h2><p>Wähle den gewünschten Verkehrspartner. Anschließend stehen dir die passenden Funktionen für Eingang und Ausgang zur Verfügung.</p></div>' +
     '<div class="brand-grid"><button id="brandTFG" class="brand-card" type="button"><div class="brand-logo-wrap"><img alt="TFG Transfracht" src="' + TFG_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>TFG</strong><span>Transfracht · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
     '<button id="brandHWL" class="brand-card hwl" type="button"><div class="brand-logo-wrap"><img alt="Hellmann Worldwide Logistics" src="' + HWL_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>HWL</strong><span>Hellmann · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
     '<button id="brandMED" class="brand-card med" type="button"><div class="brand-logo-wrap"><img alt="MEDLOG" src="' + MED_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>MEDLOG</strong><span>MED · Eingang</span></div><span class="brand-arrow">→</span></div></button>' +
@@ -302,8 +302,8 @@ function showBrandLanding() {
   el("modeShell").classList.add("hidden");
   document.querySelector(".hero").classList.add("hidden");
   panel.classList.add("hidden");
-  document.querySelector(".brand h1").textContent = "CTOS Converter";
-  document.querySelector(".brand p").textContent = "Import & Export";
+  document.querySelector(".brand h1").textContent = "NEXORA";
+  document.querySelector(".brand p").textContent = "Import & Export Platform";
 }
 
 function selectBrand(brand) {
@@ -315,10 +315,8 @@ function selectBrand(brand) {
   document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("hidden", btn.dataset.brand !== brand));
   document.querySelector(".mode-switch").classList.toggle("single", brand === "med");
   document.querySelector(".mode-switch").classList.toggle("triple", brand === "tfg");
-  const titles = { tfg:"TFG Converter", hwl:"HWL Converter", med:"MEDLOG Converter", ctos:"CTOS Dispoliste" };
-  const subtitles = { tfg:"TFG Import & Export", hwl:"HWL Import & Export", med:"MEDLOG Eingang", ctos:"COREOR Erstellung" };
-  document.querySelector(".brand h1").textContent = titles[brand] || "CTOS Converter";
-  document.querySelector(".brand p").textContent = subtitles[brand] || "Import & Export";
+  document.querySelector(".brand h1").textContent = "NEXORA";
+  document.querySelector(".brand p").textContent = "Import & Export Platform";
   setMode(brand === "tfg" ? "inbound" : brand === "hwl" ? "hellmann" : brand === "med" ? "medInbound" : "coreorRelease");
 }
 
