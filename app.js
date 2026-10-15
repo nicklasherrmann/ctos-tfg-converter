@@ -884,9 +884,18 @@ function parseHellmannSecondPart(bytes) {
 
     const bl = clean(row[idx.bl]).toUpperCase();
     const nhm = clean(row[idx.nhm]).replace(/\D/g, "");
-    let fe = bl === "B" ? "F" : bl === "L" ? "E" : "";
-    if (!fe) fe = nhm === "990200" ? "F" : nhm === "993200" ? "E" : "";
-    if (!fe) warnings.push("Zeile " + (r + 1) + ": B/L bzw. NHM bei " + ctrNo + " nicht eindeutig.");
+
+    // Regensburg: Bei Leereinheiten ist das Ladungsgewicht 0 und GROSS entspricht
+    // exakt der Tara (z. B. 3.180 kg). Das ist zuverlässiger als B/L, das in
+    // diesen Listen auch bei leeren Einheiten als "B" vorkommen kann.
+    let fe;
+    if (loadWeight === 0) {
+      fe = "E";
+    } else {
+      fe = nhm === "993200" ? "E" : nhm === "990200" ? "F" : "";
+      if (!fe) fe = bl === "L" ? "E" : bl === "B" ? "F" : "";
+    }
+    if (!fe) warnings.push("Zeile " + (r + 1) + ": Leervoll-Status bei " + ctrNo + " nicht eindeutig.");
 
     if (!groups.has(wagonNo)) {
       if (wagonOrder.length >= 4) throw new Error("Die Zusatzliste enthält mehr als vier Wagen. Erwartet werden Wagen 7–10.");
