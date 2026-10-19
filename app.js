@@ -2108,7 +2108,15 @@ function mapIso(type,length,height) {
   if (type === "DC" && length === "20") return "22G0";
   if (type === "DC" && length === "40" && height === "86") return "42G0";
   if (type === "DC" && length === "40" && height === "96") return "45G0";
+
+  // TFG verwendet in den Exportdateien die bisherigen OT/RT-Kürzel
+  // kombiniert mit dem Größenpräfix 22 / 42 / 45.
+  if (type === "OT" && length === "20" && height === "86") return "22OT";
+  if (type === "OT" && length === "40" && height === "86") return "42OT";
   if (type === "OT" && length === "40" && height === "96") return "45OT";
+
+  if (type === "RF" && length === "20" && height === "86") return "22RT";
+  if (type === "RF" && length === "40" && height === "86") return "42RT";
   if (type === "RF" && length === "40" && height === "96") return "45RT";
   return "";
 }
