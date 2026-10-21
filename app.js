@@ -1797,6 +1797,20 @@ function parseMedlogInbound(bytes) {
   const wagonMap = new Map();
   const warnings = [];
 
+  // Erster Durchlauf: ALLE physischen Wagen erfassen – auch wenn auf ihnen
+  // überhaupt kein Container steht. MEDLOG führt Leerwagen als eigene
+  // Wagon-Position mit Wagennummer, aber ohne Containerdaten.
+  for (let r = headerRow + 1; r < matrix.length; r++) {
+    const row = matrix[r] || [];
+    const seqValue = toNumber(row[indices.seq]);
+    const wagonText = clean(row[indices.wagon]).replace(/\D/g, "");
+    if (seqValue !== null && wagonText) {
+      const seq = Number(seqValue);
+      wagonMap.set(seq, { wagonSeq:seq, wagonNo:wagonText });
+    }
+  }
+
+  // Zweiter Durchlauf: Container wie bisher ihren Wagen zuordnen.
   for (let r = headerRow + 1; r < matrix.length; r++) {
     const row = matrix[r] || [];
     const seqValue = toNumber(row[indices.seq]);
@@ -1852,6 +1866,11 @@ function parseMedlogInbound(bytes) {
   const wagons = [...wagonMap.values()].sort((a,b) => a.wagonSeq - b.wagonSeq);
   const loadedWagonNos = new Set(entries.map(e => e.wagonNo));
   const emptyWagons = wagons.filter(w => !loadedWagonNos.has(w.wagonNo));
+
+  const maxSeq = wagons.length ? Math.max(...wagons.map(w => w.wagonSeq)) : 0;
+  if (maxSeq && wagons.length !== maxSeq) {
+    warnings.push("Wagenpositionen sind nicht lückenlos: " + wagons.length + " Wagen bei höchster WAG_SEQ_NO " + maxSeq + ".");
+  }
 
   const previewRows = [];
   for (const wagon of wagons) {
