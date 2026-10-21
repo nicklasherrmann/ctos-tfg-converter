@@ -1794,6 +1794,7 @@ function parseMedlogInbound(bytes) {
   let currentWagon = null;
   let fallbackWeightCount = 0;
   const entries = [];
+  const wagonMap = new Map();
   const warnings = [];
 
   for (let r = headerRow + 1; r < matrix.length; r++) {
@@ -1839,14 +1840,47 @@ function parseMedlogInbound(bytes) {
   }
 
   if (!entries.length) throw new Error("Keine Container in der MEDLOG-Datei erkannt.");
-  const wagonCount = new Set(entries.map(e => e.wagonNo)).size;
+
+  // Fallback für ältere Dateien: falls die Wagenpositionen nur zusammen mit
+  // Containern geliefert werden, bauen wir die Wagenliste daraus auf.
+  if (!wagonMap.size) {
+    for (const e of entries) {
+      if (!wagonMap.has(e.wagonSeq)) wagonMap.set(e.wagonSeq, { wagonSeq:e.wagonSeq, wagonNo:e.wagonNo });
+    }
+  }
+
+  const wagons = [...wagonMap.values()].sort((a,b) => a.wagonSeq - b.wagonSeq);
+  const loadedWagonNos = new Set(entries.map(e => e.wagonNo));
+  const emptyWagons = wagons.filter(w => !loadedWagonNos.has(w.wagonNo));
+
+  const previewRows = [];
+  for (const wagon of wagons) {
+    const wagonEntries = entries.filter(e => e.wagonSeq === wagon.wagonSeq);
+    if (wagonEntries.length) {
+      previewRows.push(...wagonEntries.map(e => ({...e, emptyWagon:false})));
+    } else {
+      previewRows.push({
+        wagonSeq:wagon.wagonSeq,
+        wagonNo:wagon.wagonNo,
+        slot:null,
+        ctrNo:"",
+        iso:"",
+        fe:"",
+        gross:null,
+        emptyWagon:true
+      });
+    }
+  }
 
   return {
     trainNo,
     etdDate,
     etaDate,
     entries,
-    wagonCount,
+    previewRows,
+    wagons,
+    wagonCount:wagons.length,
+    emptyWagonCount:emptyWagons.length,
     unitCount: entries.length,
     fallbackWeightCount,
     sourceSheet: sheetName,
@@ -2172,14 +2206,14 @@ function renderResult(data) {
     rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Teil 2",data.part2 ? "ergänzt" : "offen"]];
   } else if (mode === "medInbound") {
     const isFallback = data.sourceFormat === "Fallback-Wagenliste";
-    previewLabel = data.unitCount + " Container";
-    stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 06:00"],["Wagen",data.wagonCount],["Container",data.unitCount]];
-    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)]];
-    previewRows = data.entries;
-    subtitle = isFallback ? "MEDLOG Fallback-Wagenliste → CTOS Eingang" : "MEDLOG Outbound → CTOS Eingang";
+    previewLabel = data.unitCount + " Container · " + data.wagonCount + " Wagen";
+    stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 06:00"],["Wagen",data.wagonCount],["Leerwagen",data.emptyWagonCount || 0],["Container",data.unitCount]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.emptyWagon ? "LEERWAGEN" : r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>r.gross === null || r.gross === undefined ? "" : formatNumber(r.gross)]];
+    previewRows = data.previewRows || data.entries;
+    subtitle = isFallback ? "MEDLOG Fallback-Wagenliste → CTOS Eingang" : "MEDLOG Outbound → CTOS Eingang · Leerwagen werden mitgeführt";
     rules = isFallback
       ? [["LINER","MED"],["ETA","Listendatum · 06:00"],["ISO","45G0"],["FE","F"],["GROSS","Lading × 1.000 + 4.000 kg Tara"]]
-      : [["LINER","MED"],["ETA","+1 Tag · 06:00"],["ISO","aus Quelle"],["Fehlendes GROSS","10.000 kg"]];
+      : [["LINER","MED"],["ETA","+1 Tag · 06:00"],["WAG_TYPE","6264 auch bei Leerwagen"],["Leerwagen","eigene TCM-Zeile ohne Containerdaten"],["ISO","aus Quelle"],["Fehlendes GROSS","10.000 kg"]];
   } else if (mode === "coreorRelease") {
     previewLabel = data.unitCount + " Release-Container";
     stats = [["Release",data.unitCount],["Import",data.importCount],["Export",data.exportCount],["Zurückgestellt",data.skippedNotArrivedCount || 0]];
@@ -2408,20 +2442,38 @@ function makeHellmannRows(data) {
 }
 function makeMedlogRows(data) {
   const eta = excelSerialAtTime(data.etaDate, 6);
-  return data.entries.map(e => {
+  const makeRow = (wagonSeq, wagonNo, entry = null) => {
     const row = Object.fromEntries(HEADERS.map(h => [h, null]));
     Object.assign(row, MED_FIXED, {
       TRN_NO: data.trainNo,
       ETA: eta,
-      WAG_SEQ_NO: e.wagonSeq,
-      WAG_NO: Number(e.wagonNo),
-      CTR_NO: e.ctrNo,
-      ISO: e.iso || null,
-      FE: e.fe || null,
-      GROSS: e.gross
+      WAG_SEQ_NO: wagonSeq,
+      WAG_NO: wagonNo ? Number(wagonNo) : null,
+      CTR_NO: entry?.ctrNo || null,
+      ISO: entry?.iso || null,
+      FE: entry?.fe || null,
+      GROSS: entry?.gross ?? null
     });
     return HEADERS.map(h => row[h]);
-  });
+  };
+
+  // Bei normalen Train-Compositions muss jeder physische Wagen in der TCM
+  // stehen. Ein komplett leerer Wagen erhält deshalb eine eigene Zeile mit
+  // WAG_SEQ_NO/WAG_NO/WAG_TYPE, aber ohne Containerdaten.
+  if (Array.isArray(data.wagons) && data.wagons.length) {
+    const rows = [];
+    for (const wagon of data.wagons) {
+      const wagonEntries = data.entries.filter(e => e.wagonSeq === wagon.wagonSeq);
+      if (wagonEntries.length) {
+        for (const e of wagonEntries) rows.push(makeRow(wagon.wagonSeq, wagon.wagonNo, e));
+      } else {
+        rows.push(makeRow(wagon.wagonSeq, wagon.wagonNo, null));
+      }
+    }
+    return rows;
+  }
+
+  return data.entries.map(e => makeRow(e.wagonSeq, e.wagonNo, e));
 }
 function makeCoreorCoparnRows(data) {
   const etd = excelSerialAtTime("29.01.2031", 15);
