@@ -550,11 +550,12 @@ async function parseElischPdf(bytes) {
 
   let trainNo = null;
   let date = null;
-  let lastWagon = null;
-  let wagonSeq = 0;
+  let carryWagon = null;
   let candidateRows = 0;
   const entries = [];
   const warnings = [];
+  const wagons = [];
+  const wagonSeqByNo = new Map();
 
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
     const page = await pdf.getPage(pageNo);
@@ -580,6 +581,21 @@ async function parseElischPdf(bytes) {
       if (t) trainNo = Number(t.text.slice(0, -1));
     }
 
+    // Wagen unabhängig von Ladeeinheiten erfassen. So bleiben auch komplett
+    // leere Wagen erhalten, die in der Elisch keine Containerzeile besitzen.
+    const pageCarryWagon = carryWagon;
+    const wagonAnchors = items
+      .filter(i => i.x >= 0 && i.x <= 115 && /^\d{12}$/.test(i.text))
+      .sort((a,b) => b.y - a.y);
+
+    for (const anchor of wagonAnchors) {
+      if (!wagonSeqByNo.has(anchor.text)) {
+        const seq = wagons.length + 1;
+        wagonSeqByNo.set(anchor.text, seq);
+        wagons.push({ wagonSeq:seq, wagonNo:anchor.text });
+      }
+    }
+
     const prefixes = items
       .filter(i => i.x >= 108 && i.x <= 146 && /^[A-Z]{4}$/.test(i.text))
       .sort((a,b) => b.y - a.y); // PDF.js y grows bottom-up
@@ -587,7 +603,6 @@ async function parseElischPdf(bytes) {
     for (const prefix of prefixes) {
       // Einige Elisch-PDFs haben auf der letzten Seite leicht abweichende
       // Textkoordinaten bzw. teilen Zellen in mehrere PDF.js-Textobjekte.
-      // 4.5 pt bleiben deutlich unter dem Zeilenabstand, sind aber robust genug.
       const line = items.filter(i => Math.abs(i.y - prefix.y) <= 4.5);
 
       const pick = (xmin, xmax, regex) =>
@@ -600,8 +615,6 @@ async function parseElischPdf(bytes) {
       const sortedLine = [...line].sort((a,b) => a.x - b.x);
       const rowText = sortedLine.map(i => i.text).join(" ").replace(/\s+/g, " ").trim();
 
-      // Ref-Nr. zuerst positionsbasiert, danach als Fallback aus der kompletten
-      // Tabellenzeile. Das deckt auch "4254015001HAMBURG-WH" sicher ab.
       const refZone = sortedLine
         .filter(i => i.x >= 320 && i.x < 462)
         .map(i => i.text)
@@ -610,8 +623,6 @@ async function parseElischPdf(bytes) {
       let bookMatch = refZone.match(/(\d{10})/);
       if (!bookMatch) bookMatch = rowText.match(/(?:^|\D)(\d{10})(?=\D|$)/);
 
-      // B/L robust aus dem Kennzeichenbereich lesen; falls PDF.js die
-      // Koordinaten anders liefert, zusätzlich aus der gesamten Zeile.
       const blZone = sortedLine
         .filter(i => i.x >= 450 && i.x < 482)
         .map(i => i.text)
@@ -628,8 +639,6 @@ async function parseElischPdf(bytes) {
         if (rowBl) blText = rowBl[1];
       }
 
-      // Gewicht positionsbasiert; als letzter Fallback nehmen wir die Zahl
-      // direkt hinter dem B/L-Kennzeichen in derselben Zeile.
       const grossZone = sortedLine
         .filter(i => i.x >= 475 && i.x < 545)
         .map(i => i.text)
@@ -642,9 +651,6 @@ async function parseElischPdf(bytes) {
         if (rowGross) grossText = rowGross[1];
       }
 
-      let wagon = pick(0, 100, /^\d{12}$/);
-      if (!wagon) wagon = sortedLine.find(i => /^\d{12}$/.test(i.text));
-
       if (!bookMatch || !blText || !grossText) {
         const missing = [
           !bookMatch ? "Ref-Nr." : null,
@@ -655,23 +661,30 @@ async function parseElischPdf(bytes) {
         continue;
       }
 
-      if (wagon) {
-        if (wagon.text !== lastWagon) {
-          wagonSeq++;
-          lastWagon = wagon.text;
-        }
-      }
+      // Den zugehörigen Wagen über den nächstgelegenen Wagenanker oberhalb
+      // der Ladeeinheit bestimmen. Bei Seitenumbrüchen gilt der letzte Wagen
+      // der vorherigen Seite weiter, bis ein neuer Wagenanker erscheint.
+      const preceding = wagonAnchors
+        .filter(a => a.y >= prefix.y - 4.5)
+        .sort((a,b) => (a.y - prefix.y) - (b.y - prefix.y))[0];
+      const wagonNo = preceding?.text || pageCarryWagon;
 
-      if (!lastWagon) {
+      if (!wagonNo) {
         warnings.push(`Seite ${pageNo}: Für ${prefix.text}${leNo.text} wurde keine Wagennummer gefunden.`);
         continue;
       }
 
+      if (!wagonSeqByNo.has(wagonNo)) {
+        const seq = wagons.length + 1;
+        wagonSeqByNo.set(wagonNo, seq);
+        wagons.push({ wagonSeq:seq, wagonNo });
+      }
+
       entries.push({
         trainNo,
-        wagonSeq,
-        wagonNo: lastWagon,
-        ctrNo: `${prefix.text}${leNo.text}`, // bewusst String → führende Null bleibt erhalten
+        wagonSeq: wagonSeqByNo.get(wagonNo),
+        wagonNo,
+        ctrNo: `${prefix.text}${leNo.text}`,
         fe: blText === "B" ? "F" : "E",
         gross: Number(grossText),
         bookNo: Number(bookMatch[1]),
@@ -687,28 +700,60 @@ async function parseElischPdf(bytes) {
         })()
       });
     }
+
+    if (wagonAnchors.length) carryWagon = wagonAnchors[wagonAnchors.length - 1].text;
   }
 
-  const uniqueWagons = new Set(entries.map(e => e.wagonNo)).size;
+  // Falls eine ältere Elisch keine separaten Wagenanker liefert, wenigstens
+  // die aus Containerzeilen bekannten Wagen übernehmen.
+  if (!wagons.length) {
+    for (const e of entries) {
+      if (!wagonSeqByNo.has(e.wagonNo)) {
+        const seq = wagons.length + 1;
+        wagonSeqByNo.set(e.wagonNo, seq);
+        wagons.push({ wagonSeq:seq, wagonNo:e.wagonNo });
+      }
+      e.wagonSeq = wagonSeqByNo.get(e.wagonNo);
+    }
+  }
+
+  const loadedWagons = new Set(entries.map(e => e.wagonNo));
+  const emptyWagons = wagons.filter(w => !loadedWagons.has(w.wagonNo));
+  const previewRows = [];
+  for (const wagon of wagons) {
+    const wagonEntries = entries.filter(e => e.wagonNo === wagon.wagonNo);
+    if (wagonEntries.length) {
+      previewRows.push(...wagonEntries.map(e => ({ ...e, emptyWagon:false })));
+    } else {
+      previewRows.push({
+        wagonSeq:wagon.wagonSeq,
+        wagonNo:wagon.wagonNo,
+        ctrNo:"",
+        fe:"",
+        gross:null,
+        bookNo:null,
+        fpod:null,
+        emptyWagon:true
+      });
+    }
+  }
 
   if (candidateRows !== entries.length) {
     warnings.push(`${candidateRows} Ladeeinheiten-Zeilen erkannt, aber nur ${entries.length} vollständig übernommen.`);
-  }
-
-  if (wagonSeq !== uniqueWagons) {
-    warnings.push(`Wagensequenz (${wagonSeq}) und eindeutige Wagen (${uniqueWagons}) weichen voneinander ab.`);
   }
 
   return {
     trainNo,
     date,
     entries,
-    wagonCount: uniqueWagons,
+    previewRows,
+    wagons,
+    wagonCount: wagons.length,
+    emptyWagonCount: emptyWagons.length,
     unitCount: entries.length,
     warnings
   };
 }
-
 
 async function parseHellmannPdf(bytes) {
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
@@ -1064,26 +1109,32 @@ function parseTfgTcmSource(bytes) {
   const headers = [...matrix[headerRow]];
   const preamble = matrix.slice(0, headerRow).map(row => [...row]);
   const rows = matrix.slice(headerRow + 1).map(row => [...row]);
-  const dataRows = rows.filter(row => clean(row[idx.ctr]));
+  const wagonRows = rows.filter(row => clean(row[idx.wagon]).replace(/\D/g,""));
+  const dataRows = wagonRows.filter(row => clean(row[idx.ctr]));
   if (!dataRows.length) throw new Error("Keine Containerzeilen in der TCM-IN erkannt.");
 
-  const trainNo = idx.train >= 0 ? toNumber(dataRows.find(r => r[idx.train] !== null && r[idx.train] !== undefined)?.[idx.train]) : null;
-  const etaValue = idx.eta >= 0 ? dataRows.find(r => r[idx.eta] !== null && r[idx.eta] !== undefined)?.[idx.eta] : null;
+  const trainNo = idx.train >= 0 ? toNumber(wagonRows.find(r => r[idx.train] !== null && r[idx.train] !== undefined)?.[idx.train]) : null;
+  const etaValue = idx.eta >= 0 ? wagonRows.find(r => r[idx.eta] !== null && r[idx.eta] !== undefined)?.[idx.eta] : null;
   const date = normalizeDate(etaValue);
-  const wagonCount = new Set(dataRows.map(r => clean(r[idx.wagon]).replace(/\D/g,"")).filter(Boolean)).size;
+  const wagonNos = new Set(wagonRows.map(r => clean(r[idx.wagon]).replace(/\D/g,"")).filter(Boolean));
+  const loadedWagonNos = new Set(dataRows.map(r => clean(r[idx.wagon]).replace(/\D/g,"")).filter(Boolean));
+  const wagonCount = wagonNos.size;
 
-  const entries = dataRows.map(row => ({
+  const entries = wagonRows.map(row => ({
     wagonSeq:row[idx.seq],
     wagonNo:clean(row[idx.wagon]).replace(/\D/g,""),
     wagType:row[idx.wagType],
     ctrNo:clean(row[idx.ctr]),
     fpod:idx.fpod >= 0 ? clean(row[idx.fpod]) : "",
-    bookNo:idx.book >= 0 ? row[idx.book] : null
+    bookNo:idx.book >= 0 ? row[idx.book] : null,
+    emptyWagon:!clean(row[idx.ctr])
   }));
 
   return {
     sheetName, headerRow, headers, preamble, rows, indices:idx,
-    entries, unitCount:entries.length, wagonCount, trainNo, date,
+    entries, unitCount:dataRows.length, wagonCount,
+    emptyWagonCount:[...wagonNos].filter(w => !loadedWagonNos.has(w)).length,
+    trainNo, date,
     warnings:[], finalized:false
   };
 }
@@ -1174,11 +1225,11 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
   }
 
   const idx = base.indices;
-  const dataRows = base.rows.filter(r => clean(r[idx.ctr]));
-  const nonDataRows = base.rows.filter(r => !clean(r[idx.ctr]));
+  const wagonRows = base.rows.filter(r => clean(r[idx.wagon]).replace(/\D/g,""));
+  const otherRows = base.rows.filter(r => !clean(r[idx.wagon]).replace(/\D/g,""));
 
   const rowsByWagon = new Map();
-  for (const sourceRow of dataRows) {
+  for (const sourceRow of wagonRows) {
     const wagonNo = clean(sourceRow[idx.wagon]).replace(/\D/g,"");
     if (!wagonNo) continue;
     if (!rowsByWagon.has(wagonNo)) rowsByWagon.set(wagonNo, []);
@@ -1191,17 +1242,14 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
     throw new Error("Diese TCM-Wagen fehlen in der Wagenliste: " + missing.join(", ") + ".");
   }
 
-  // Entscheidend: Die Ausgangs-/Elisch-Reihung wird vollständig verworfen.
-  // Wir bauen die Excel-Zeilen NEU in exakt derselben Wagenreihenfolge auf,
-  // wie sie in der Wagenliste per LNr 1, 2, 3 ... steht.
   const mitveanOrder = [...mitvean.wagons.values()]
     .sort((a,b) => a.lnr - b.lnr)
     .filter(info => currentWagons.has(info.wagonNo));
 
   const orderedRows = [];
   for (const info of mitveanOrder) {
-    const wagonRows = rowsByWagon.get(info.wagonNo) || [];
-    for (const sourceRow of wagonRows) {
+    const sourceRows = rowsByWagon.get(info.wagonNo) || [];
+    for (const sourceRow of sourceRows) {
       const row = [...sourceRow];
       row[idx.seq] = info.lnr;
       row[idx.wagType] = info.wagType;
@@ -1209,25 +1257,24 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
     }
   }
 
-  if (orderedRows.length !== dataRows.length) {
+  if (orderedRows.length !== wagonRows.length) {
     throw new Error(
       "Die Wagenreihung konnte nicht vollständig aufgebaut werden: " +
-      orderedRows.length + " von " + dataRows.length + " Containerzeilen zugeordnet."
+      orderedRows.length + " von " + wagonRows.length + " Wagen-/Containerzeilen zugeordnet."
     );
   }
 
-  const rows = [...orderedRows, ...nonDataRows];
+  const rows = [...orderedRows, ...otherRows];
   const entries = orderedRows.map(row => ({
     wagonSeq:row[idx.seq],
     wagonNo:clean(row[idx.wagon]).replace(/\D/g,""),
     wagType:row[idx.wagType],
     ctrNo:clean(row[idx.ctr]),
     fpod:idx.fpod >= 0 ? clean(row[idx.fpod]) : "",
-    bookNo:idx.book >= 0 ? row[idx.book] : null
+    bookNo:idx.book >= 0 ? row[idx.book] : null,
+    emptyWagon:!clean(row[idx.ctr])
   }));
 
-  // Harte Plausibilitätsprüfung: die eindeutige Wagenfolge in der Ausgabe
-  // muss exakt der Wagenlisten-LNr-Folge entsprechen.
   const outputWagonOrder = [];
   for (const e of entries) {
     if (outputWagonOrder[outputWagonOrder.length - 1] !== e.wagonNo) outputWagonOrder.push(e.wagonNo);
@@ -1243,15 +1290,18 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
 
   const missingTypes = entries.filter(e => e.wagType === null || e.wagType === undefined || e.wagType === "");
   if (missingTypes.length) {
-    throw new Error("WAG_TYPE konnte für " + missingTypes.length + " Containerzeile(n) nicht gesetzt werden.");
+    throw new Error("WAG_TYPE konnte für " + missingTypes.length + " Wagen-/Containerzeile(n) nicht gesetzt werden.");
   }
+
+  const loadedWagons = new Set(entries.filter(e => e.ctrNo).map(e => e.wagonNo));
 
   return {
     ...base,
     rows,
     entries,
-    unitCount:entries.length,
+    unitCount:entries.filter(e => e.ctrNo).length,
     wagonCount:outputWagonOrder.length,
+    emptyWagonCount:outputWagonOrder.filter(w => !loadedWagons.has(w)).length,
     warnings:[...(base.warnings || []), ...(mitvean.warnings || [])],
     sourceName:(base.baseSourceName || base.sourceName) + " + " + sourceName,
     finalized:true,
@@ -2196,12 +2246,12 @@ function renderResult(data) {
   let stats, columns, previewRows, subtitle, rules, previewLabel;
 
   if (mode === "inbound") {
-    previewLabel = data.unitCount + " Zeilen";
-    stats = [["Zugnummer",data.trainNo],["Datum",data.date],["Wagen",data.wagonCount],["Ladeeinheiten",data.unitCount]];
-    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo]];
-    previewRows = data.entries;
-    subtitle = "Erkannte TCM-Eingangsdaten";
-    rules = [["LINER","TFG"],["ETA","12:00"],["FPOD","ADIDAS → ADIDA · ERNSTING'S → ESF"],["Leading Zero","erhalten"]];
+    previewLabel = data.unitCount + " Ladeeinheiten · " + data.wagonCount + " Wagen";
+    stats = [["Zugnummer",data.trainNo],["Datum",data.date],["Wagen",data.wagonCount],["Leerwagen",data.emptyWagonCount || 0],["Ladeeinheiten",data.unitCount]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["CTR_NO",r=>r.emptyWagon ? "LEERWAGEN" : r.ctrNo],["FE",r=>r.fe],["GROSS",r=>r.gross === null || r.gross === undefined ? "" : formatNumber(r.gross)],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo ?? ""]];
+    previewRows = data.previewRows || data.entries;
+    subtitle = "Erkannte TCM-Eingangsdaten · Leerwagen werden mitgeführt";
+    rules = [["LINER","TFG"],["ETA","12:00"],["Leerwagen","eigene TCM-Zeile ohne Containerdaten"],["FPOD","ADIDAS → ADIDA · ERNSTING'S → ESF"],["Leading Zero","erhalten"]];
   } else if (mode === "outbound") {
     previewLabel = data.unitCount + " Zeilen";
     stats = [["Zugnummer","50418"],["ETD",data.date + " 20:00"],["Container",data.unitCount],["Zielterminals",data.destinationCount]];
@@ -2211,8 +2261,8 @@ function renderResult(data) {
     rules = [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]];
   } else if (mode === "tfgFinalize") {
     previewLabel = data.unitCount + " Container";
-    stats = [["Zugnummer",data.trainNo || "–"],["Wagen",data.wagonCount],["Container",data.unitCount],["Status",data.finalized ? "finalisiert" : "Wagenliste offen"]];
-    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["WAG_TYPE",r=>r.wagType ?? ""],["CTR_NO",r=>r.ctrNo],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo ?? ""]];
+    stats = [["Zugnummer",data.trainNo || "–"],["Wagen",data.wagonCount],["Leerwagen",data.emptyWagonCount || 0],["Container",data.unitCount],["Status",data.finalized ? "finalisiert" : "Wagenliste offen"]];
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["WAG_TYPE",r=>r.wagType ?? ""],["CTR_NO",r=>r.emptyWagon ? "LEERWAGEN" : r.ctrNo],["FPOD",r=>r.fpod || ""],["BOOK_NO",r=>r.bookNo ?? ""]];
     previewRows = data.entries;
     subtitle = data.finalized ? "TCM-IN + MITVEAN · Wagenreihung exakt aus der Wagenliste" : "Ausgangs-TCM geladen · Wagenliste noch hinzufügen";
     rules = [["Änderungen","nur WAG_SEQ_NO + WAG_TYPE"],["Reihenfolge","1:1 aus Wagenlisten-LNr"],["Elisch-Reihung","wird ignoriert"],["Restliche TCM-Felder","unverändert"]];
@@ -2396,24 +2446,36 @@ function excelSerialAtNoon(dateString) {
 
 function makeExcelRows(data) {
   const eta = excelSerialAtNoon(data.date);
-
-  return data.entries.map(e => {
+  const makeRow = (wagonSeq, wagonNo, entry = null) => {
     const row = Object.fromEntries(HEADERS.map(h => [h, null]));
-
     Object.assign(row, FIXED, {
       TRN_NO: data.trainNo,
       ETA: eta,
-      WAG_SEQ_NO: e.wagonSeq,
-      WAG_NO: Number(e.wagonNo),
-      CTR_NO: e.ctrNo,
-      FE: e.fe,
-      GROSS: e.gross,
-      FPOD: e.fpod || null,
-      BOOK_NO: e.bookNo
+      WAG_SEQ_NO: wagonSeq,
+      WAG_NO: wagonNo ? Number(wagonNo) : null,
+      CTR_NO: entry?.ctrNo || null,
+      FE: entry?.fe || null,
+      GROSS: entry?.gross ?? null,
+      FPOD: entry?.fpod || null,
+      BOOK_NO: entry?.bookNo ?? null
     });
-
     return HEADERS.map(h => row[h]);
-  });
+  };
+
+  if (Array.isArray(data.wagons) && data.wagons.length) {
+    const rows = [];
+    for (const wagon of data.wagons) {
+      const wagonEntries = data.entries.filter(e => e.wagonNo === wagon.wagonNo);
+      if (wagonEntries.length) {
+        for (const e of wagonEntries) rows.push(makeRow(wagon.wagonSeq, wagon.wagonNo, e));
+      } else {
+        rows.push(makeRow(wagon.wagonSeq, wagon.wagonNo, null));
+      }
+    }
+    return rows;
+  }
+
+  return data.entries.map(e => makeRow(e.wagonSeq, e.wagonNo, e));
 }
 
 
