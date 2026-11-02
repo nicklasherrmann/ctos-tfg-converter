@@ -2190,34 +2190,84 @@ function parseHwlLadeliste(bytes) {
     }
   }
 
+  // Die HWL-Excel hat eine Kopfzeile mit "WB-Nr." in A und D.
+  // Danach folgen 8 REG-Zeilen, eine Leerzeile und anschließend 16 LDH-Zeilen.
+  // Früher waren diese Bereiche um eine Zeile nach oben verschoben, wodurch
+  // echte Einheiten aus dem 40er-Raster herausfielen.
+  let headerRow = -1;
+  for (let r = 0; r < Math.min(matrix.length, 12); r++) {
+    const a = normalizeHeader(matrix?.[r]?.[0]);
+    const d = normalizeHeader(matrix?.[r]?.[3]);
+    if (a.includes("wbnr") && d.includes("wbnr")) {
+      headerRow = r;
+      break;
+    }
+  }
+  if (headerRow < 0) throw new Error("Die WB-Nr.-Kopfzeile der HWL-Ladeliste wurde nicht erkannt.");
+
+  const regStart = headerRow + 1;
+  const regEnd = regStart + 7;
+
+  let separatorRow = -1;
+  for (let r = regEnd + 1; r < Math.min(matrix.length, regEnd + 5); r++) {
+    const left = clean(matrix?.[r]?.[0]);
+    const right = clean(matrix?.[r]?.[3]);
+    if (!left && !right) {
+      separatorRow = r;
+      break;
+    }
+  }
+  if (separatorRow < 0) separatorRow = regEnd + 1;
+
+  const ldhStart = separatorRow + 1;
+  const ldhLeftEnd = ldhStart + 15;
+  const ldhRightEnd = ldhStart + 7;
+
   const slots = [];
   let position = 1;
   const addSlot = (rowIndex, colIndex, area) => {
     const raw = clean(matrix?.[rowIndex]?.[colIndex]);
     const digits = raw.replace(/\D/g,"");
     const ctrNo = digits ? "CCPD" + digits.padStart(7,"0") : "";
-    slots.push({ position:position++, area, sourceRow:rowIndex+1, sourceColumn:colIndex===0?"A":"D", wbNo:digits, ctrNo });
+    slots.push({
+      position:position++,
+      area,
+      sourceRow:rowIndex+1,
+      sourceColumn:colIndex===0?"A":"D",
+      wbNo:digits,
+      ctrNo
+    });
   };
 
-  for (let r = 2; r <= 9; r++) addSlot(r,0,"REG");
-  for (let r = 2; r <= 9; r++) addSlot(r,3,"REG");
-  for (let r = 11; r <= 26; r++) addSlot(r,0,"LDH");
-  for (let r = 11; r <= 18; r++) addSlot(r,3,"LDH");
+  for (let r = regStart; r <= regEnd; r++) addSlot(r,0,"REG");
+  for (let r = regStart; r <= regEnd; r++) addSlot(r,3,"REG");
+  for (let r = ldhStart; r <= ldhLeftEnd; r++) addSlot(r,0,"LDH");
+  for (let r = ldhStart; r <= ldhRightEnd; r++) addSlot(r,3,"LDH");
 
+  // Nur Einheiten rechts unterhalb des vorgesehenen 8er-LDH-Blocks gelten
+  // als zusätzlicher Überhang außerhalb der 40 festen Verladeplätze.
   const ignored = [];
-  for (let r = 19; r <= 26; r++) {
+  for (let r = ldhRightEnd + 1; r <= ldhLeftEnd; r++) {
     const raw = clean(matrix?.[r]?.[3]);
     if (raw) ignored.push(raw);
   }
 
   return {
-    trainNo:50020, date, slots, entries:slots, unitCount:slots.filter(s=>s.ctrNo).length, slotCount:40,
+    trainNo:50020,
+    date,
+    slots,
+    entries:slots,
+    unitCount:slots.filter(s=>s.ctrNo).length,
+    slotCount:40,
     regLoaded:slots.filter(s=>s.area==="REG" && s.ctrNo).length,
     ldhLoaded:slots.filter(s=>s.area==="LDH" && s.ctrNo).length,
     emptySlots:slots.filter(s=>!s.ctrNo).length,
-    ignoredCount:ignored.length, ignoredUnits:ignored, warnings:[]
+    ignoredCount:ignored.length,
+    ignoredUnits:ignored,
+    warnings:[]
   };
 }
+
 function mapIso(type,length,height) {
   if (type === "DC" && length === "20") return "22G0";
   if (type === "DC" && length === "40" && height === "86") return "42G0";
