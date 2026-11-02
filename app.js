@@ -130,7 +130,7 @@ const panel = document.querySelector(".panel");
 const heroText = document.querySelector(".hero p");
 const heroFrom = document.querySelector(".hero-badge span:first-child");
 
-const TFG_LOGO_DATA = "https://www.transfracht.com/resource/blob/8748624/a6e0cac5cfbf5b88dd4f0cf7cb7342c4/TFG-data.jpg";
+const TFG_LOGO_DATA = "https://www.transfracht.com/resource/blob/8686482/a6e0cac5cfbf5b88dd4f0cf7cb7342c4/TFG-data.jpg";
 const HWL_LOGO_DATA = "https://images.seeklogo.com/logo-png/38/1/hellmann-logo-png_seeklogo-387871.png";
 const MED_LOGO_DATA = "https://images.seeklogo.com/logo-png/34/1/medlog-transport-logistics-logo-png_seeklogo-349013.png";
 const CTOS_LOGO_DATA = "https://ct-os.de/wp-content/uploads/2021/07/Logo-ctos.jpg";
@@ -158,6 +158,11 @@ function setupModeSwitcher() {
     .brand-logo-wrap{height:158px;border-radius:12px;background:#f7f9fb;border:1px solid #e7edf3;display:flex;align-items:center;justify-content:center;padding:22px 30px;overflow:hidden}
     .brand-logo-wrap img{display:block;max-width:82%;max-height:104px;object-fit:contain}
     .brand-card.hwl .brand-logo-wrap img{max-width:118px;max-height:118px}
+    .brand-card.tfg .brand-logo-wrap img{max-width:78%;max-height:92px}
+    .tfg-wordmark-fallback{display:none;text-align:center;color:#12395f;font-weight:900;line-height:.9;letter-spacing:-.055em;font-size:46px}
+    .tfg-wordmark-fallback small{display:block;margin-top:8px;font-size:13px;letter-spacing:.18em;color:#5d7188}
+    .brand-card.tfg.logo-fallback .tfg-wordmark-fallback{display:block}
+    .brand-card.tfg.logo-fallback .brand-logo-wrap img{display:none}
     .med-wordmark{font-size:34px;font-weight:900;letter-spacing:-.045em;color:#0b5cab}
     .brand-card.med .brand-logo-wrap{background:linear-gradient(145deg,#f9fbfd,#eef4f9);padding:8px 12px}
     .brand-card.med .brand-logo-wrap img{width:100%;max-width:100%;max-height:124px;object-fit:contain;transform:scale(1.32)}
@@ -206,11 +211,17 @@ function setupModeSwitcher() {
   landing.id = "brandLanding";
   landing.className = "brand-landing";
   landing.innerHTML = '<div class="brand-intro"><div class="eyebrow">NEXORA</div><h2>Partner auswählen.</h2><p>Wähle den gewünschten Verkehrspartner. Anschließend stehen dir die passenden Funktionen für Eingang und Ausgang zur Verfügung.</p></div>' +
-    '<div class="brand-grid"><button id="brandTFG" class="brand-card" type="button"><div class="brand-logo-wrap"><img alt="TFG Transfracht" src="' + TFG_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>TFG</strong><span>Transfracht · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
+    '<div class="brand-grid"><button id="brandTFG" class="brand-card tfg" type="button"><div class="brand-logo-wrap"><img id="tfgLogoImg" alt="TFG Transfracht" src="' + TFG_LOGO_DATA + '"><span class="tfg-wordmark-fallback">TFG<small>TRANSFRACHT</small></span></div><div class="brand-card-copy"><div><strong>TFG</strong><span>Transfracht · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
     '<button id="brandHWL" class="brand-card hwl" type="button"><div class="brand-logo-wrap"><img alt="Hellmann Worldwide Logistics" src="' + HWL_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>HWL</strong><span>Hellmann · Eingang & Ausgang</span></div><span class="brand-arrow">→</span></div></button>' +
     '<button id="brandMED" class="brand-card med" type="button"><div class="brand-logo-wrap"><img alt="MEDLOG" src="' + MED_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>MEDLOG</strong><span>MED · Eingang</span></div><span class="brand-arrow">→</span></div></button>' +
     '<button id="brandCTOS" class="brand-card ctos" type="button"><div class="brand-logo-wrap"><img alt="CTOS" src="' + CTOS_LOGO_DATA + '"></div><div class="brand-card-copy"><div><strong>CTOS</strong><span>Dispoliste · COREOR</span></div><span class="brand-arrow">→</span></div></button></div>';
   document.querySelector(".hero").parentNode.insertBefore(landing, document.querySelector(".hero"));
+  const tfgLogoImg = el("tfgLogoImg");
+  if (tfgLogoImg) {
+    tfgLogoImg.addEventListener("error", () => el("brandTFG")?.classList.add("logo-fallback"));
+    tfgLogoImg.addEventListener("load", () => el("brandTFG")?.classList.remove("logo-fallback"));
+    if (tfgLogoImg.complete && !tfgLogoImg.naturalWidth) el("brandTFG")?.classList.add("logo-fallback");
+  }
 
   const shell = document.createElement("div");
   shell.id = "modeShell";
