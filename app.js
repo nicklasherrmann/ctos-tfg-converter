@@ -230,6 +230,7 @@ function setupModeSwitcher() {
     '<button id="modeInbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Eingang</span><span class="mode-desc">Elisch PDF → TCM Excel</span></button>' +
     '<button id="modeOutbound" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
     '<button id="modeTfgFinalize" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">TCM finalisieren</span><span class="mode-desc">TCM-IN + Wagenliste → finale TCM</span></button>' +
+    '<button id="modePlanner" data-brand="tfg" class="mode-btn" type="button"><span class="mode-kicker">TFG</span><span class="mode-title">Train Planner</span><span class="mode-desc">Wagen + Ladeliste → Verplanung</span></button>' +
     '<button id="modeHellmann" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Eingang</span><span class="mode-desc">PDF + Zusatzliste → TCM Excel</span></button>' +
     '<button id="modeHwlOutbound" data-brand="hwl" class="mode-btn" type="button"><span class="mode-kicker">HWL</span><span class="mode-title">Ausgang</span><span class="mode-desc">Ladeliste Excel → Export Excel</span></button>' +
     '<button id="modeMedInbound" data-brand="med" class="mode-btn" type="button"><span class="mode-kicker">MED</span><span class="mode-title">Eingang</span><span class="mode-desc">Train Composition → TCM Excel</span></button>' +
@@ -254,6 +255,7 @@ function setupModeSwitcher() {
   el("modeInbound").addEventListener("click", () => setMode("inbound"));
   el("modeOutbound").addEventListener("click", () => setMode("outbound"));
   el("modeTfgFinalize").addEventListener("click", () => setMode("tfgFinalize"));
+  el("modePlanner").addEventListener("click", () => setMode("tfgPlanner"));
   el("modeHellmann").addEventListener("click", () => setMode("hellmann"));
   el("modeHwlOutbound").addEventListener("click", () => setMode("hwlOutbound"));
   el("modeMedInbound").addEventListener("click", () => setMode("medInbound"));
@@ -313,6 +315,7 @@ function showBrandLanding() {
   el("modeShell").classList.add("hidden");
   document.querySelector(".hero").classList.add("hidden");
   panel.classList.add("hidden");
+  window.NexoraPlanner?.deactivate();
   document.querySelector(".brand h1").textContent = "NEXORA";
   document.querySelector(".brand p").textContent = "Import & Export Platform";
 }
@@ -325,7 +328,8 @@ function selectBrand(brand) {
   panel.classList.remove("hidden");
   document.querySelectorAll(".mode-btn").forEach(btn => btn.classList.toggle("hidden", btn.dataset.brand !== brand));
   document.querySelector(".mode-switch").classList.toggle("single", brand === "med");
-  document.querySelector(".mode-switch").classList.toggle("triple", brand === "tfg");
+  document.querySelector(".mode-switch").classList.toggle("triple", false);
+  document.querySelector(".mode-switch").classList.toggle("quad", brand === "tfg");
   document.querySelector(".brand h1").textContent = "NEXORA";
   document.querySelector(".brand p").textContent = "Import & Export Platform";
   setMode(brand === "tfg" ? "inbound" : brand === "hwl" ? "hellmann" : brand === "med" ? "medInbound" : "coreorRelease");
@@ -341,11 +345,14 @@ function setMode(nextMode) {
     medInbound:"modeMedInbound",
     coreorRelease:"modeCoreorRelease",
     coreorCoparn:"modeCoreorCoparn",
-    tfgFinalize:"modeTfgFinalize"
+    tfgFinalize:"modeTfgFinalize",
+    tfgPlanner:"modePlanner"
   };
-  ["modeInbound","modeOutbound","modeTfgFinalize","modeHellmann","modeHwlOutbound","modeMedInbound","modeCoreorRelease","modeCoreorCoparn"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
+  ["modeInbound","modeOutbound","modeTfgFinalize","modePlanner","modeHellmann","modeHwlOutbound","modeMedInbound","modeCoreorRelease","modeCoreorCoparn"].forEach(id => el(id).classList.toggle("active", id === map[mode]));
   reset();
   applyModeUi();
+  if (mode === "tfgPlanner") window.NexoraPlanner?.activate();
+  else { panel.classList.remove("hidden"); window.NexoraPlanner?.deactivate(); }
 }
 
 function applyModeUi() {
@@ -355,7 +362,11 @@ function applyModeUi() {
     mode === "coreorRelease" ? "Release erstellen" : "Excel erstellen";
   const expectsPdf = mode === "inbound" || mode === "hellmann";
   fileInput.accept = mode === "hwlOutbound" ? ".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : (expectsPdf ? ".pdf,application/pdf" : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel");
-  if (mode === "inbound") {
+  if (mode === "tfgPlanner") {
+    document.querySelector(".hero h2").textContent = "TFG-Zugverplanung erstellen.";
+    heroText.textContent = "MITVEAN-Wagenliste und TFG-Ladeliste zu einem prüfpflichtigen Verplanungsvorschlag zusammenführen.";
+    heroFrom.textContent = "PDF + XLSX";
+  } else if (mode === "inbound") {
     document.querySelector(".hero h2").textContent = "TFG-Eingang konvertieren.";
     document.querySelector(".dropzone h3").textContent = "Elisch-PDF hier ablegen";
     document.querySelector(".file-hint").textContent = "Nur PDF · keine Server-Übertragung";
@@ -1178,6 +1189,7 @@ async function parseMitveanPdf(bytes) {
   const wagons = new Map();
   const warnings = [];
   const trainNos = new Set();
+  const dates = new Set();
   let maxLnr = 0;
 
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
@@ -1188,6 +1200,8 @@ async function parseMitveanPdf(bytes) {
     }));
     const lines = groupPdfRows(items, 2.8);
     for (const line of lines) {
+      const dm = line.match(/\b(\d{2})\.(\d{2})\.(\d{2}|\d{4})\b/);
+      if (dm) dates.add(`${dm[1]}.${dm[2]}.${dm[3].length === 2 ? "20" + dm[3] : dm[3]}`);
       // Beide DB-Ausgaben kommen vor:
       // MITVEAN "Liste Gleisinhalt" mit Z50417/2 und
       // MITSVKI "Liste Eingangszug" mit "Zug 50419".
@@ -1227,7 +1241,7 @@ async function parseMitveanPdf(bytes) {
   if (!wagons.size) throw new Error("Keine Wagenzeilen erkannt. Unterstützt werden MITVEAN „Liste Gleisinhalt“ und MITSVKI „Liste Eingangszug“.");
   const trainNo = trainNos.size === 1 ? [...trainNos][0] : null;
   if (trainNos.size > 1) warnings.push("Mehrere Zugnummern in der Wagenlisten-PDF erkannt: " + [...trainNos].join(", ") + ".");
-  return { wagons, wagonCount:wagons.size, maxLnr, trainNo, warnings };
+  return { wagons, wagonCount:wagons.size, maxLnr, trainNo, date:dates.size === 1 ? [...dates][0] : null, warnings };
 }
 
 function finalizeTfgTcm(base, mitvean, sourceName) {
@@ -2058,6 +2072,8 @@ function parseLadeliste(bytes) {
       iso,
       fe,
       gross:toNumber(row[idx.gross]),
+      lengthFt:Number(length),
+      destinationRaw,
       pod:destination || "",
       releaseOrder,
       bookNo:clean(row[idx.bookNo]),
