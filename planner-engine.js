@@ -5,6 +5,13 @@
   const calibrationMeters = 700; // Nutzerangabe: 700 m reichen ungefähr von Yardposition 1 bis 100.
   const fieldWidth = 99;
   const stable = (a,b) => String(a).localeCompare(String(b),'de',{numeric:true});
+  // TFG Excel: Leercontainer = L -> FE = E. Reeder is optional.
+  // Never infer a HAPAG affiliation merely from a container prefix (e.g. HLBU).
+  function isEmptyHapag(unit) {
+    if (String(unit?.fe || '').trim().toUpperCase() !== 'E') return false;
+    const owner = String(unit?.carrier || unit?.shipper || '').trim().toUpperCase();
+    return /HAPAG[\s-]*LLOYD|\bHAPAG\b/.test(owner);
+  }
   function classifyWagon(w) {
     const ax=Number(w.axles), lup=Number(w.lup); // LüP aus MITVEAN in Dezimetern
     if (ax===2 && lup>=137 && lup<=142) return 40;
@@ -226,7 +233,7 @@
       yardWarnings:normalized.yardWarnings,unknownWagons:wagons.filter(w=>w.capacityFt===null),
       loadLimitsVerified:false,loadPositionsVerified:false};
   }
-  const engine={classifyWagon,parseYardLocation,normalizeYard,allocate};
+  const engine={classifyWagon,parseYardLocation,normalizeYard,allocate,isEmptyHapag};
   root.NexoraPlannerEngine=engine;
   if(typeof module!=='undefined'&&module.exports)module.exports=engine;
 })(typeof window!=='undefined'?window:globalThis);
