@@ -94,14 +94,25 @@
     $('plannerRemoveYard').classList.add('hidden');
     if(parsed)await runPlanning(true);
   });
+  // Only a display transformation; the full identifier remains unchanged in
+  // all source data, accessibility labels, the tooltip and exported rows.
+  function split20ContainerNumber(value){
+    const number=String(value??'').trim();
+    if(number.length<=4)return [number,''];
+    return [number.slice(0,4),number.slice(4)];
+  }
   function unitView(u,w){
     const green=window.NexoraPlannerEngine.isEmptyHapag(u);
     const style=`left:${100*u.offsetFt/w.capacityFt}%;width:${100*u.lengthFt/w.capacityFt}%`;
     const fullInfo=`${w.destination} · ${u.ctrNo} · ${u.lengthFt} Fuß · ${u.yardLocation} · ${kg(u.gross)}${green?' · Leerer HAPAG-Container':''}`;
+    const [containerPrefix,containerDigits]=split20ContainerNumber(u.ctrNo);
+    const numberLabel=Number(u.lengthFt)===20 && containerDigits
+      ? `<span class="planner-container-no-small planner-container-no-20"><span>${esc(containerPrefix)}</span><span>${esc(containerDigits)}</span></span>`
+      : `<span class="planner-container-no-small">${esc(u.ctrNo)}</span>`;
     return `<div class="planner-container-v2 ${green?'planner-container-hapag':'planner-container-red'}" style="${style}" title="${esc(fullInfo)}" aria-label="${esc(fullInfo)}">
       <div class="planner-container-head"><span>${esc(w.destination)}</span><span>${esc(u.fe==='E'?'L':u.fe==='F'?'V':'')}</span></div>
       <strong class="planner-container-size">${esc(u.lengthFt)}'</strong>
-      <span class="planner-container-no-small">${esc(u.ctrNo)}</span>
+      ${numberLabel}
       <span class="planner-container-yard">${esc(u.yardLocation||'COMMUNITY')}</span>
       <span class="planner-container-weight">${esc(kg(u.gross))}</span>
     </div>`;
@@ -279,9 +290,23 @@
             const hue=window.NexoraPlannerEngine.isEmptyHapag(u)?'#238450':'#c93841';
             svg.push(box(xUnit+0.6,deckY+1,Math.max(1,wUnit-1.2),deckH-2,hue,'#ffffff',.8,1));
             const textSize=Math.max(7,Math.min(12, wUnit/2.5))*rowFactor;
-            const ctrSize=Math.max(3.9,Math.min(7.2, wUnit/5.8))*rowFactor;
-            svg.push(txt(xUnit+wUnit/2,deckY+deckH/2-1.1*rowFactor,`${u.lengthFt}'`,textSize,'#ffffff',true,'text-anchor="middle"'));
-            svg.push(txt(xUnit+wUnit/2,deckY+deckH/2+textSize*.78,`${u.ctrNo}`,ctrSize,'#ffffff',false,'text-anchor="middle"'));
+            const centerX=xUnit+wUnit/2;
+            if(Number(u.lengthFt)===20){
+              // A single tiny line is unreadable on A4. Keep prefix/check digit
+              // together in two centered lines without changing the real ID.
+              const [prefix,digits]=split20ContainerNumber(u.ctrNo);
+              const prefixSize=Math.min(9.4,(wUnit-3)/Math.max(1,prefix.length*.6))*rowFactor;
+              const digitsSize=Math.min(8,(wUnit-3)/Math.max(1,digits.length*.58))*rowFactor;
+              svg.push(txt(centerX,deckY+11*rowFactor,`20'`,textSize,'#ffffff',true,'text-anchor="middle"'));
+              svg.push(txt(centerX,deckY+24*rowFactor,prefix,prefixSize,'#ffffff',true,'text-anchor="middle"'));
+              if(digits)svg.push(txt(centerX,deckY+35*rowFactor,digits,digitsSize,'#ffffff',true,'text-anchor="middle"'));
+            }else{
+              // 40' keeps its full number on one line.
+              const id=String(u.ctrNo??'');
+              const ctrSize=Math.min(8,(wUnit-3)/Math.max(1,id.length*.57))*rowFactor;
+              svg.push(txt(centerX,deckY+16*rowFactor,`${u.lengthFt}'`,textSize,'#ffffff',true,'text-anchor="middle"'));
+              svg.push(txt(centerX,deckY+29*rowFactor,id,ctrSize,'#ffffff',true,'text-anchor="middle"'));
+            }
           }
         }else{
           svg.push(txt(x+frameW/2,deckY+deckH/2+3*rowFactor,'?',10*rowFactor,'#627a8c',true,'text-anchor="middle"'));
