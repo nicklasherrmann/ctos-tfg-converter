@@ -77,6 +77,9 @@
     const sorted=[...wagons].map(w=>({...w,capacityFt:classifyWagon(w),destination:null,
       units:[],assignedFt:0,assignedGrossKg:0,centerRuleApplied:false})).sort((a,b)=>Number(a.lnr)-Number(b.lnr));
     if(reverse)sorted.reverse();
+    // Fortlaufende Anzeigeposition ab linkem Zuganfang – unabhängig von der
+    // ursprünglichen MITVEAN-Laufnummer. Original-LNr bleibt zur Prüfung erhalten.
+    sorted.forEach((w,index)=>{w.displaySeq=index+1;});
     const totalMeters=sorted.reduce((s,w)=>s+(Number(w.lup)||0)/10,0);
     // Position 100 = letztes Wagenende. Länge wird von rechts nach links abgetragen.
     let cursor=100-totalMeters*fieldWidth/calibrationMeters;
