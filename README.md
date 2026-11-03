@@ -51,3 +51,17 @@ Inhalt des Archivs auf einen statischen Webserver oder Netlify legen. `index.htm
 - `tests/planner-engine.test.js`: künstliche Testfälle, ausführbar mit `node tests/planner-engine.test.js`
 
 Die vom Nutzer bereitgestellten Beispiel-, Zug- und Yarddateien sind **nicht** im Archiv enthalten.
+
+
+## A4-Steckübersicht (v3)
+
+Im TFG Train Planner ist nach einer berechneten Verplanung der Button
+**„Steckübersicht drucken · DIN A4“** verfügbar. Das Browser-Druckfenster
+zeigt den gesamten Zug auf **einer A4-Seite im Querformat**, auf mehrere
+Lesereihen verteilt, in unveränderter Wagenreihenfolge. Pro Wagen werden
+Wagennummer, Zielbahnhof sowie schematische Containerlängen (20'/40')
+und bei mittiger Einzelbeladung „MITTIG“ ausgegeben. Rote Container sind
+Standard; leere HAPAG-LLOYD-Container grün. Die Seite kann direkt gedruckt
+oder über „Als PDF speichern“ archiviert werden. Die Darstellung ist ein
+**prüfpflichtiger Entwurf und keine Verladefreigabe**; zugelassene
+Verriegelungspositionen und Lastgrenzen müssen extern geprüft werden.
