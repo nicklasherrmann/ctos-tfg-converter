@@ -125,8 +125,8 @@
     const n=Math.max(2,Math.min(6,Number(w.axles)||2));
     const wheels=Array.from({length:n},(_,i)=>`<i class="planner-wheel" style="left:${8+84*(i/(n-1))}%"></i>`).join('');
     const width=size*6.3;
-    return `<article class="planner-wagon-v2 ${assigned?'':'planner-wagon-empty-v2'}" style="width:${width}px" aria-label="Wagen ${esc(w.lnr||index+1)}, ${esc(w.wagonNo)}">
-      <div class="planner-wagon-head-v2"><div class="planner-wagon-ref"><span>WAGEN ${esc(w.lnr||index+1)}</span><strong>${esc(w.wagonNo)}</strong></div>
+    return `<article class="planner-wagon-v2 ${assigned?'':'planner-wagon-empty-v2'}" style="width:${width}px" aria-label="Wagen ${esc(w.displaySeq||index+1)}, ${esc(w.wagonNo)}">
+      <div class="planner-wagon-head-v2"><div class="planner-wagon-ref"><span>WAGEN ${esc(w.displaySeq||index+1)}</span><strong>${esc(w.wagonNo)}</strong></div>
         <div class="planner-wagon-target">${assigned?esc(w.destination):'—'}</div></div>
       <div class="planner-wagon-spec"><span>${esc(w.axles)}A · ${cap?`${cap}'`:'Typ ?'}</span><span>${pos(w.positionStart)}–${pos(w.positionEnd)}</span></div>
       ${deck}
@@ -272,8 +272,8 @@
       const y=rowStart+rowIndex*rowHeight;
       const h=rowHeight*rowFactor;
       svg.push(box(12,y+1,1116,rowHeight-3,rowIndex%2===0?'#f6f9fc':'#ffffff','#dce6ed',0.8,2));
-      const first=group[0]?.lnr ?? displayed+1;
-      const last=group[group.length-1]?.lnr??displayed+group.length;
+      const first=group[0]?.displaySeq ?? displayed+1;
+      const last=group[group.length-1]?.displaySeq??displayed+group.length;
       svg.push(txt(25,y+14*rowFactor,`WAGEN ${first}–${last}  →`,11*rowFactor,'#2d5a78',true));
       let x=27;
       const deckY=y+49*rowFactor,deckH=42*rowFactor;
@@ -283,7 +283,7 @@
         const frameX=x+1, frameW=Math.max(12,width-4);
         const destination=w.destination||'–';
         const n=String(w.wagonNo||'');
-        svg.push(txt(x+2,y+27*rowFactor,`${w.lnr||displayed+j+1}`,10.4*rowFactor,'#163e5b',true));
+        svg.push(txt(x+2,y+27*rowFactor,`${w.displaySeq||displayed+j+1}`,10.4*rowFactor,'#163e5b',true));
         svg.push(txt(x+frameW-2,y+27*rowFactor,destination,9.5*rowFactor,'#b83b41',true,'text-anchor="end"'));
         // Wagon number is written in full, and shrunk slightly only when needed.
         const numberSize=Math.min(10.1,Math.max(6.8,(frameW-3)/(Math.max(n.length,1)*.61)))*rowFactor;
@@ -362,8 +362,8 @@
     if(!latest)return;
     const rows=[['HINWEIS','WAGENFOLGE','WAG_NO','ACHSSEN','LUEP_DM','GLEIS_POSITION','ZIELBAHNHOF','CONTAINER','FT','YARD_POSITION','GROSS_KG','SCHEMATISCHER_VERSATZ_FT','WAGEN_LADUNG_KG','ANMERKUNG']];
     for(const w of latest.plan.wagons){
-      if(!w.units.length)rows.push(['PRÜFENTWURF',w.lnr,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),'','','','','','','0','Wagen nicht beladen']);
-      for(const u of w.units)rows.push(['PRÜFENTWURF',w.lnr,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),w.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,u.offsetFt,w.assignedGrossKg,'NICHT ZUM VERLADEN FREIGEGEBEN']);
+      if(!w.units.length)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),'','','','','','','0','Wagen nicht beladen']);
+      for(const u of w.units)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),w.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,u.offsetFt,w.assignedGrossKg,'NICHT ZUM VERLADEN FREIGEGEBEN']);
     }
     for(const u of latest.plan.unplanned)rows.push(['OFFEN','','','','','',u.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,'','',u.reason]);
     const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
