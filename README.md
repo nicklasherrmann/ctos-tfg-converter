@@ -65,3 +65,8 @@ Standard; leere HAPAG-LLOYD-Container grün. Die Seite kann direkt gedruckt
 oder über „Als PDF speichern“ archiviert werden. Die Darstellung ist ein
 **prüfpflichtiger Entwurf und keine Verladefreigabe**; zugelassene
 Verriegelungspositionen und Lastgrenzen müssen extern geprüft werden.
+
+
+## v4 Ergänzung
+- In der horizontalen Zugansicht steht unter der 20'/40'-Angabe nun in kleiner Schrift die vollständige Containernummer.
+- In der A4-Steckübersicht wird die Containernummer ebenfalls unter der Größenangabe innerhalb des Containers dargestellt.
