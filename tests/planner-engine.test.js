@@ -65,3 +65,58 @@ assert.equal(isEmptyHapag({fe:'E',shipper:'HAPAG-LLOYD AG'}),true);
 assert.equal(isEmptyHapag({fe:'F',carrier:'HAPAG-LLOYD'}),false);
 assert.equal(isEmptyHapag({fe:'E',carrier:'CMA CGM'}),false);
 assert.equal(isEmptyHapag({fe:'E',ctrNo:'HLBU9999999'}),false);
+
+// v6: Der einzige verfügbare Wagen muss dem Vollcontainer vorbehalten sein.
+{
+  const units=[{...u('EMPTY','CTB',40),fe:'E'},{...u('FULL','CTA',40),fe:'F'}];
+  const p=allocate([w(1,2,140)],units);
+  assert.equal(p.plannedFull,1);
+  assert.equal(p.plannedEmpty,0);
+  assert.equal(p.wagons[0].units[0].ctrNo,'FULL');
+  assert.equal(p.unplanned[0].ctrNo,'EMPTY');
+  check(p,units);
+}
+// Leercontainer dürfen freie Restkapazität eines Vollcontainer-Wagens nutzen.
+{
+  const units=[{...u('FULL','CTA',40),fe:'F'},{...u('EMPTY','CTA',20),fe:'E'}];
+  const p=allocate([w(1,4,196)],units);
+  assert.equal(p.plannedFull,1);
+  assert.equal(p.plannedEmpty,1);
+  assert.equal(p.wagons[0].assignedFt,60);
+  check(p,units);
+}
+// Auch wenn Leereinheiten zuerst in der Datei stehen, werden mehrere
+// Vollcontainer mit unterschiedlichen Zielen grundsätzlich vorgezogen.
+{
+  const units=[{...u('E1','EKOM',40),fe:'E'},
+    {...u('F1','CTA',40),fe:'F'}, {...u('F2','BK',40),fe:'F'},
+    {...u('E2','EKOM',40),fe:'E'}];
+  const p=allocate([w(1,2,140),w(2,2,140)],units);
+  assert.equal(p.plannedFull,2);
+  assert.equal(p.plannedEmpty,0);
+  check(p,units);
+}
+// Das Umkehren der Zugreihung dreht nicht nur das Bild, sondern die Wagen-
+// positionsberechnung; das Zugende der tatsächlichen Reihenfolge bleibt 100.
+{
+  const wagons=[w(1,2,140),w(2,6,267),w(3,4,196)];
+  const entries=[{...u('F1','CTA',40),fe:'F'}];
+  const normal=allocate(wagons,entries);
+  const reverse=allocate(wagons,entries,[],{reverse:true});
+  assert.deepEqual(normal.wagons.map(w=>w.lnr),[1,2,3]);
+  assert.deepEqual(reverse.wagons.map(w=>w.lnr),[3,2,1]);
+  assert.equal(reverse.reverse,true);
+  assert.ok(Math.abs(reverse.wagons[reverse.wagons.length-1].positionEnd-100)<1e-9);
+  assert.ok(reverse.wagons[0].positionCenter<reverse.wagons[2].positionCenter);
+  check(reverse,entries);
+}
+// Die Nähe zum Yard wird nach dem Drehen erneut anhand der neuen Positionen berechnet.
+{
+  const wagons=[w(1,2,140),w(2,2,140)];
+  const entries=[{...u('NEAR100','CTA',40),fe:'F'}];
+  const yard=[{ctrNo:'NEAR100',location:'K 99 A 1'}];
+  const normal=allocate(wagons,entries,yard);
+  const reversed=allocate(wagons,entries,yard,{reverse:true});
+  assert.equal(normal.wagons.find(w=>w.units.length)?.lnr,2);
+  assert.equal(reversed.wagons.find(w=>w.units.length)?.lnr,1);
+}
