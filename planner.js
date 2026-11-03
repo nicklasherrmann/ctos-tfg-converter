@@ -24,7 +24,7 @@
     <div id="plannerOutput" class="hidden">
       <div id="plannerMetrics" class="planner-metrics"></div>
       <div class="planner-output-head"><div><h4>Grafischer Zug · Wagenfolge</h4><p>Alle Containerdaten direkt sichtbar. Schematische Positionen, nicht maßstabsgetreue Verriegelung.</p></div>
-      <button id="plannerDownload" class="ghost-btn" type="button">Planungsentwurf als CSV ↓</button></div>
+      <div class="planner-export-actions"><button id="plannerPrint" class="primary-btn" type="button" title="Gesamten Zug auf einer DIN-A4-Seite im Querformat drucken oder als PDF speichern">Steckübersicht drucken · DIN A4</button><button id="plannerDownload" class="ghost-btn" type="button">Planungsentwurf als CSV ↓</button></div></div>
       <div id="plannerWarnings"></div>
       <div class="planner-legend planner-legend-v2"><span><i class="planner-legend-red"></i> Container</span><span><i class="planner-legend-green"></i> Leere HAPAG-Container</span><span>Gleisposition 1–100 · Zugende bei 100</span></div>
       <section class="planner-train-panel" aria-label="Horizontaler Zugladeplan">
@@ -192,6 +192,133 @@
     if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
     e.preventDefault();scrollView.scrollBy({left:e.key==='ArrowRight'?310:-310,behavior:'smooth'});
   });
+  // A4 landscape / single sheet. Separate print-only SVG avoids printing only
+  // the currently visible slice of the horizontal (overflow-x) train track.
+  // Wagon and container rectangles are strictly SCHEMATIC; no technical approval.
+  const svgText=(v)=>esc(v);
+  const svgn=(v)=>Number(v).toFixed(2);
+  function partitionForPrint(wagons,rowCount){
+    // Consecutive wagon groups, balanced by their real coupling lengths (LüP).
+    // Preserves MITVEAN order and keeps the scale consistent on every line.
+    const size=w=>Math.max(10,Number(w.lup)/10||20);
+    const groups=[],total=wagons.reduce((a,w)=>a+size(w),0);
+    let index=0,remaining=total;
+    for(let row=0;row<rowCount;row++){
+      const rest=rowCount-row;
+      if(rest===1){groups.push(wagons.slice(index));break;}
+      const target=remaining/rest;
+      let running=0,stop=index;
+      // Leave at least one wagon for each remaining line.
+      while(stop<wagons.length-(rest-1)){
+        const next=size(wagons[stop]);
+        if(stop>index && Math.abs(target-running)<Math.abs(target-running-next))break;
+        running+=next;stop++;
+        if(running>=target)break;
+      }
+      stop=Math.max(index+1,stop);
+      const group=wagons.slice(index,stop);
+      groups.push(group);index=stop;remaining-=group.reduce((a,w)=>a+size(w),0);
+    }
+    return groups;
+  }
+  function buildPrintSvg(plan){
+    const wagonCount=plan.wagons.length;
+    const totalMeters=plan.wagons.reduce((a,w)=>a+Math.max(10,Number(w.lup)/10||20),0);
+    const rowCount=Math.max(1,Math.min(9,Math.max(Math.ceil(totalMeters/180),Math.ceil(wagonCount/10))));
+    const groups=partitionForPrint(plan.wagons,rowCount);
+    const maxMeters=Math.max(...groups.map(g=>g.reduce((a,w)=>a+Math.max(10,Number(w.lup)/10||20),0)),1);
+    const maxPieces=Math.max(...groups.map(g=>g.length),1);
+    const horizontalScale=Math.min((1090-6*(maxPieces-1))/maxMeters,10);
+    const slotWidth=1090;
+    const rowStart=108,rowBottom=705,rowHeight=(rowBottom-rowStart)/rowCount;
+    const rowFactor=Math.min(1,rowHeight/149);
+    const svg=[];
+    const box=(x,y,w,h,color,stroke='none',sw=0,rad=0)=>`<rect x="${svgn(x)}" y="${svgn(y)}" width="${svgn(w)}" height="${svgn(h)}" rx="${rad}" fill="${color}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    const txt=(x,y,value,size=11,color='#273f51',bold=false,opts='')=>`<text x="${svgn(x)}" y="${svgn(y)}" font-size="${svgn(size)}" font-family="Arial, Helvetica, sans-serif" fill="${color}" font-weight="${bold?700:400}" ${opts}>${svgText(value)}</text>`;
+    svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="1140" height="792" viewBox="0 0 1140 792" role="img" aria-label="A4 Steckübersicht mit ${wagonCount} Wagen, Wagenfolge und schematischen 20- und 40-Fuß-Stellplätzen">`);
+    svg.push(box(0,0,1140,792,'#ffffff'));
+    svg.push(box(12,10,1116,54,'#d3e8f5','#95b6cd',1,5));
+    svg.push(txt(27,32,'NEXORA  ·  TFG TRAIN PLANNER',18,'#164568',true));
+    svg.push(txt(27,51,'STECKÜBERSICHT · GESAMTZUG',13,'#164568',true));
+    svg.push(txt(1110,33,'DIN A4  ·  QUERFORMAT  ·  1 SEITE',11,'#365d79',true,'text-anchor="end"'));
+    svg.push(txt(1110,51,`${wagonCount} Wagen   |   ${plan.planned}/${plan.total} Container   |   ${pos(plan.totalMeters)} m`,11,'#365d79',false,'text-anchor="end"'));
+    svg.push(box(12,70,1116,29,'#fff2df','#e4ad65',1,3));
+    svg.push(txt(24,89,'PRÜFENTWURF · Keine Verladefreigabe: Verriegelungspositionen, Achslasten, Traglast und Kombinationen vor Ort prüfen.',12,'#834d1b',true));
+    let displayed=0;
+    groups.forEach((group,rowIndex)=>{
+      const y=rowStart+rowIndex*rowHeight;
+      const h=rowHeight*rowFactor;
+      svg.push(box(12,y+1,1116,rowHeight-3,rowIndex%2===0?'#f6f9fc':'#ffffff','#dce6ed',0.8,2));
+      const first=group[0]?.lnr ?? displayed+1;
+      const last=group[group.length-1]?.lnr??displayed+group.length;
+      svg.push(txt(25,y+14*rowFactor,`WAGEN ${first}–${last}  →`,11*rowFactor,'#2d5a78',true));
+      let x=27;
+      const deckY=y+49*rowFactor,deckH=42*rowFactor;
+      group.forEach((w,j)=>{
+        const wagonLength=Math.max(10,Number(w.lup)/10||20);
+        const width=wagonLength*horizontalScale;
+        const frameX=x+1, frameW=Math.max(12,width-4);
+        const destination=w.destination||'–';
+        const n=String(w.wagonNo||'');
+        svg.push(txt(x+2,y+27*rowFactor,`${w.lnr||displayed+j+1}`,10.4*rowFactor,'#163e5b',true));
+        svg.push(txt(x+frameW-2,y+27*rowFactor,destination,9.5*rowFactor,'#b83b41',true,'text-anchor="end"'));
+        // Wagon number is written in full, and shrunk slightly only when needed.
+        const numberSize=Math.min(10.1,Math.max(6.8,(frameW-3)/(Math.max(n.length,1)*.61)))*rowFactor;
+        svg.push(txt(x+2,y+40*rowFactor,n,numberSize,'#213b50',true));
+        svg.push(box(frameX,deckY,frameW,deckH,'#f3f6f8','#8195a4',1,1));
+        const capacity=Number(w.capacityFt)||0;
+        if(capacity>0){
+          for(let feet=20;feet<capacity;feet+=20){
+            const slotX=frameX+(frameW*(feet/capacity));
+            svg.push(`<path d="M ${svgn(slotX)} ${svgn(deckY)} V ${svgn(deckY+deckH)}" stroke="#c4d1da" stroke-width="1"/>`);
+          }
+          for(const u of w.units){
+            const xUnit=frameX+(Number(u.offsetFt)/capacity)*frameW;
+            const wUnit=(Number(u.lengthFt)/capacity)*frameW;
+            const hue=window.NexoraPlannerEngine.isEmptyHapag(u)?'#238450':'#c93841';
+            svg.push(box(xUnit+0.6,deckY+1,Math.max(1,wUnit-1.2),deckH-2,hue,'#ffffff',.8,1));
+            const textSize=Math.max(7,Math.min(12, wUnit/2.4))*rowFactor;
+            svg.push(txt(xUnit+wUnit/2,deckY+deckH/2+textSize*.32,`${u.lengthFt}'`,textSize,'#ffffff',true,'text-anchor="middle"'));
+          }
+        }else{
+          svg.push(txt(x+frameW/2,deckY+deckH/2+3*rowFactor,'?',10*rowFactor,'#627a8c',true,'text-anchor="middle"'));
+        }
+        const railY=deckY+deckH+4*rowFactor;
+        svg.push(box(frameX,railY,frameW,3*rowFactor,'#6f8494'));
+        const wheels=Math.max(2,Math.min(6,Number(w.axles)||2));
+        for(let a=0;a<wheels;a++){
+          const xx=frameX+frameW*(.09+.82*(a/(wheels-1)));
+          svg.push(`<circle cx="${svgn(xx)}" cy="${svgn(railY+8*rowFactor)}" r="${svgn(3.2*rowFactor)}" fill="#344a59"/>`);
+        }
+        const noteY=y+119*rowFactor;
+        if(w.centerRuleApplied)svg.push(txt(x+frameW/2,noteY,'MITTIG',9.8*rowFactor,'#107a55',true,'text-anchor="middle"'));
+        else if(!w.units.length)svg.push(txt(x+frameW/2,noteY,'FREI',9*rowFactor,'#72879a',true,'text-anchor="middle"'));
+        else svg.push(txt(x+frameW/2,noteY,`${w.units.map(u=>u.lengthFt+"'").join(' + ')}`,8.5*rowFactor,'#4b6274',true,'text-anchor="middle"'));
+        x+=width+6;
+      });
+      displayed+=group.length;
+    });
+    svg.push(box(12,715,1116,63,'#edf5fa','#c7dbe8',.8,3));
+    svg.push(box(26,727,15,13,'#c93841')); svg.push(txt(48,738,'Container',11,'#2d5068',true));
+    svg.push(box(158,727,15,13,'#238450')); svg.push(txt(180,738,'Leer HAPAG',11,'#2d5068',true));
+    svg.push(box(317,727,15,13,'#e3eaf0','#8195a4',1));svg.push(txt(339,738,'Freier Platz',11,'#2d5068',true));
+    svg.push(txt(512,738,'MITTIG = mittige Einzelbeladung',10.5,'#2d5068',true));
+    svg.push(txt(1112,738,`${plan.unplanned.length} nicht verplante Container`,10.5,plan.unplanned.length?'#b83b41':'#44657d',true,'text-anchor="end"'));
+    svg.push(txt(26,756,'Wagenfolge: Von links nach rechts; nächste Zeile wieder links beginnen. Zugende liegt bei Position 100.',11,'#476780'));
+    svg.push(txt(26,771,'Nur schematische Lage auf dem Wagen – Verriegelungs- und Lastgrenzen nicht validiert. Nicht als Steck-/Verladefreigabe nutzen.',10.6,'#99571f',true));
+    svg.push('</svg>');
+    return svg.join('');
+  }
+  const printSheet=document.createElement('div');
+  printSheet.id='plannerPrintSheet';printSheet.className='planner-print-sheet';
+  printSheet.setAttribute('aria-hidden','true');
+  document.body.appendChild(printSheet);
+  $('plannerPrint').addEventListener('click',()=>{
+    if(!latest?.plan){showMessage('Erst die Verplanung berechnen, dann den Ladeplan drucken.');return;}
+    printSheet.innerHTML=buildPrintSvg(latest.plan);
+    window.print();
+  });
+
   $('plannerDownload').addEventListener('click',()=>{
     if(!latest)return;
     const rows=[['HINWEIS','WAGENFOLGE','WAG_NO','ACHSSEN','LUEP_DM','GLEIS_POSITION','ZIELBAHNHOF','CONTAINER','FT','YARD_POSITION','GROSS_KG','SCHEMATISCHER_VERSATZ_FT','WAGEN_LADUNG_KG','ANMERKUNG']];
