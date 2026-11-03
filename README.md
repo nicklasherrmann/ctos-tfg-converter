@@ -86,3 +86,26 @@ Verriegelungspositionen und Lastgrenzen müssen extern geprüft werden.
 
 ## v7 – fortlaufende Wagenanzeige
 Die linke Seite der Zugansicht und die A4-Steckübersicht beginnen auch bei gedrehter Reihung stets mit „WAGEN 1“. Die folgende Wagenzahl entspricht der Position in der tatsächlich dargestellten physischen Reihung, nicht der ursprünglichen MITVEAN-Laufnummer. Wagenidentität/Wagennummer, tatsächliche Richtung und Yard-Optimierung bleiben unverändert. Auch die CSV-Spalte `WAGENFOLGE` zeigt diese fortlaufende Position.
+
+
+## v8 – TFG-Ausgang: MAE/HAP-Sonderzuordnung
+Die Felder `CATEGORY`, `LINER`, `CUSTOMER_ID` werden nur für den TFG-Export
+anhand von Leerstatus, Reeder, Auftraggeber und **tatsächlicher Turn-Out-Referenz**
+bestimmt. Die Beispielregeln aus dem Export vom 02.11.2026:
+
+- Leere Maersk-Container mit Auftraggeber Maersk Deutschland und erkannter Turn-Out-Referenz (`R` + 8 Ziffern / 8 Ziffern): `D / MAE / MAE`.
+- Leere HAPAG-LLOYD-Container mit Auftraggeber HAPAG-LLOYD und erkannter Turn-Out-Referenz: `D / HAP / TFG`.
+- Alle übrigen: `E / TFG / TFG`. Somit bleibt z. B. `MRSU0064125` mit
+  der Freitextangabe „fuer Maersk“ bei `E / TFG / TFG`.
+- Die Zeichenfolge `27` wird wie in der vorliegenden Referenz als leere
+  `RELEASE_ORDER` ausgegeben. Andere Werte (einschließlich „fuer Maersk“)
+  werden beibehalten.
+- Die Bedingungen sind auf das vorliegende Referenzformat abgestimmt. Bei
+  bislang unbekannten Turn-Out-Formaten muss die Zuordnung geprüft werden.
+- Drei im Referenzexport belegte `BILL_OF_LADING`-Endungen (`-/-E0-/-LEER` und `-/-E1-/-LEER`) werden entfernt; andere Anhänge bleiben bestehen.
+- Die Zuordnung ist in der TFG-Ausgangsvorschau sichtbar.
+
+Die Quelldateien und personenbezogene Daten sind nicht im Repository.
+Der TFG-Eingang, andere Converter und der Train Planner bleiben unverändert.
+
+Tests: `node --test tests/tfg-outbound-rules.test.js`.

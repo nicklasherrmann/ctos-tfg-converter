@@ -2040,8 +2040,8 @@ function parseLadeliste(bytes) {
   }
 
   const idx = headerMatch.indices;
-  // Optional: carrier/shipper are used solely for the Planner's color coding.
-  // These columns must NOT become required for existing converter imports.
+  // Reeder/Auftraggeber sind optional: Planner-Farben und TFG-Sonderzuordnung.
+  // Ältere Ladelisten ohne diese Felder bleiben importierbar (Fallback TFG).
   const optionalHeaders = (matrix[headerMatch.row] || []).map(normalizeHeader);
   const carrierCol = optionalHeaders.findIndex(h => ['reeder','reederei','shippingline','shippingcompany','liner'].includes(h));
   const shipperCol = optionalHeaders.findIndex(h => ['auftraggebername','auftraggeber','customername'].includes(h));
@@ -2071,6 +2071,9 @@ function parseLadeliste(bytes) {
     if (!fe) warnings.push(`Zeile ${r+1}: Leercontainer-Wert „${emptyFlag || "leer"}“ nicht erkannt.`);
 
     const releaseOrder = clean(row[idx.releaseOrder]);
+    const carrier = carrierCol >= 0 ? clean(row[carrierCol]) : '';
+    const shipper = shipperCol >= 0 ? clean(row[shipperCol]) : '';
+    const outboundRouting = NexoraTfgOutboundRules.classify({fe,carrier,shipper,releaseOrder});
 
     entries.push({
       ctrNo,
@@ -2083,8 +2086,9 @@ function parseLadeliste(bytes) {
       releaseOrder,
       bookNo:clean(row[idx.bookNo]),
       billOfLading:clean(row[idx.billOfLading]),
-      carrier:carrierCol >= 0 ? clean(row[carrierCol]) : '',
-      shipper:shipperCol >= 0 ? clean(row[shipperCol]) : '',
+      carrier,
+      shipper,
+      ...outboundRouting,
       date
     });
   }
@@ -2339,10 +2343,10 @@ function renderResult(data) {
   } else if (mode === "outbound") {
     previewLabel = data.unitCount + " Zeilen";
     stats = [["Zugnummer","50418"],["ETD",data.date + " 20:00"],["Container",data.unitCount],["Zielterminals",data.destinationCount]];
-    columns = [["CTR_NO",r=>r.ctrNo],["ISO",r=>r.iso],["FE",r=>r.fe],["GROSS",r=>formatNumber(r.gross)],["POD",r=>r.pod],["BILL_OF_LADING",r=>r.billOfLading]];
+    columns = [["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["CATEGORY",r=>r.category],["LINER",r=>r.liner],["CUSTOMER_ID",r=>r.customerId],["RELEASE_ORDER",r=>NexoraTfgOutboundRules.exportReleaseOrder(r.releaseOrder) || ""],["POD",r=>r.pod]];
     previewRows = data.entries;
-    subtitle = "Erkannte TFG-Exportdaten";
-    rules = [["TRN_NO","50418"],["ETD","20:00"],["LINER","TFG"]];
+    subtitle = "TFG-Export · Zuordnung nach Leerstatus, Auftraggeber, Reeder und gültiger Turn-Out-Referenz";
+    rules = [["TRN_NO","50418"],["ETD","20:00"],["MAE","Leer + Maersk + gültige Turn-Out-Referenz"],["HAP","Leer + HAPAG + gültige Turn-Out-Referenz"],["sonst","E / TFG / TFG"]];
   } else if (mode === "tfgFinalize") {
     previewLabel = data.unitCount + " Container";
     stats = [["Zugnummer",data.trainNo || "–"],["Wagen",data.wagonCount],["Leerwagen",data.emptyWagonCount || 0],["Container",data.unitCount],["Status",data.finalized ? "finalisiert" : "Wagenliste offen"]];
@@ -2574,10 +2578,13 @@ function makeOutboundRows(data) {
   const etd = excelSerialAtTime(data.date,20);
   return data.entries.map(e => {
     const row = Object.fromEntries(OUT_HEADERS.map(h => [h,null]));
+    const routing=NexoraTfgOutboundRules.classify(e);
     Object.assign(row,OUT_FIXED,{
       ETD:etd, CTR_NO:e.ctrNo, ISO:e.iso, FE:e.fe, GROSS:e.gross,
-      POD:e.pod, PLACE_OF_DELIVERY:e.pod, RELEASE_ORDER:e.releaseOrder || null,
-      BOOK_NO:e.bookNo, BILL_OF_LADING:e.billOfLading || null
+      CATEGORY:routing.category, LINER:routing.liner, CUSTOMER_ID:routing.customerId,
+      POD:e.pod, PLACE_OF_DELIVERY:e.pod,
+      RELEASE_ORDER:NexoraTfgOutboundRules.exportReleaseOrder(e.releaseOrder),
+      BOOK_NO:e.bookNo, BILL_OF_LADING:NexoraTfgOutboundRules.exportBillOfLading(e.billOfLading)
     });
     return OUT_HEADERS.map(h => row[h]);
   });
