@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict');
-const {allocate,parseYardLocation,classifyWagon}=require('../planner-engine.js');
+const {allocate,parseYardLocation,classifyWagon,isEmptyHapag}=require('../planner-engine.js');
 const w=(lnr,axles,lup)=>({lnr,wagonNo:String(100000000000+lnr),axles,lup});
 const u=(ctrNo,pod,lengthFt,gross=12000)=>({ctrNo,pod,destinationRaw:pod,lengthFt,gross});
 function check(plan,units){
@@ -56,3 +56,12 @@ for(const ft of [20,40]){
   check(p,units);
 }
 console.log('NEXORA Train Planner: alle Engine-Tests bestanden.');
+
+// Color rule: only empty HAPAG containers are green (source fields are optional).
+assert.equal(isEmptyHapag({fe:'E',carrier:'HAPAG-LLOYD'}),true);
+assert.equal(isEmptyHapag({fe:'E',carrier:'Hapag Lloyd AG'}),true);
+assert.equal(isEmptyHapag({fe:'E',carrier:'MAERSK',shipper:'HAPAG-LLOYD AG'}),false);
+assert.equal(isEmptyHapag({fe:'E',shipper:'HAPAG-LLOYD AG'}),true);
+assert.equal(isEmptyHapag({fe:'F',carrier:'HAPAG-LLOYD'}),false);
+assert.equal(isEmptyHapag({fe:'E',carrier:'CMA CGM'}),false);
+assert.equal(isEmptyHapag({fe:'E',ctrNo:'HLBU9999999'}),false);

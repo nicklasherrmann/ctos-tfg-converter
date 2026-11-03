@@ -26,8 +26,13 @@
       <div class="planner-output-head"><div><h4>Grafischer Zug · Wagenfolge</h4><p>Alle Containerdaten direkt sichtbar. Schematische Positionen, nicht maßstabsgetreue Verriegelung.</p></div>
       <button id="plannerDownload" class="ghost-btn" type="button">Planungsentwurf als CSV ↓</button></div>
       <div id="plannerWarnings"></div>
-      <div class="planner-legend"><span><i class="planner-legend-dot"></i> Farben kennzeichnen Zielterminals</span><span>Positionen 1–100 · Wagenende bei 100</span></div>
-      <div id="plannerWagonList" class="planner-wagon-list"></div>
+      <div class="planner-legend planner-legend-v2"><span><i class="planner-legend-red"></i> Container</span><span><i class="planner-legend-green"></i> Leere HAPAG-Container</span><span>Gleisposition 1–100 · Zugende bei 100</span></div>
+      <section class="planner-train-panel" aria-label="Horizontaler Zugladeplan">
+        <div class="planner-train-titlebar"><span class="planner-title-icon" aria-hidden="true">▣</span><strong>TFG · Zugverplanung</strong><span class="planner-train-status">SCHEMATISCHER ENTWURF</span></div>
+        <div class="planner-train-toolbar"><span id="plannerTrainInfo">Zugansicht</span><div class="planner-train-nav"><button id="plannerScrollLeft" class="planner-scroll-button" type="button" title="Nach links scrollen" aria-label="Nach links scrollen">◀</button><button id="plannerScrollRight" class="planner-scroll-button" type="button" title="Nach rechts scrollen" aria-label="Nach rechts scrollen">▶</button></div></div>
+        <div id="plannerWagonList" class="planner-wagon-list" tabindex="0" role="region" aria-label="Zug mit horizontaler Scrollfunktion"><div id="plannerWagonTrack" class="planner-wagon-track"></div></div>
+        <div class="planner-train-footer"><span>← Seitlich scrollen · Pfeiltasten oder Scrollleiste →</span><span>Reihenfolge gemäß MITVEAN · nicht maßstabsgerecht</span></div>
+      </section>
       <div class="planner-unplanned"><h4>Nicht verplante Container</h4><div id="plannerUnplanned"></div></div>
     </div>`;
   panel.parentNode.insertBefore(page,panel.nextSibling);
@@ -35,9 +40,6 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const kg=n=>n===null||n===undefined||!Number.isFinite(Number(n))?'–':Math.round(Number(n)).toLocaleString('de-DE')+' kg';
   const pos=n=>Number.isFinite(n)?n.toFixed(1).replace('.',','):'–';
-  const colors=['#176da8','#0c8e83','#a07122','#8c5faf','#a45b77','#416c9c','#a95c48'];
-  const colorByDestination=new Map();
-  const color=d=>{if(!colorByDestination.has(d))colorByDestination.set(d,colors[colorByDestination.size%colors.length]);return colorByDestination.get(d);};
   let parsed=null,latest=null;
   function showMessage(message,kind='error'){
     const b=$('plannerMessage');b.className='planner-message '+kind;b.textContent=message;
@@ -93,27 +95,32 @@
     if(parsed)await runPlanning(true);
   });
   function unitView(u,w){
-    const background=color(w.destination);
-    return `<div class="planner-unit" style="--dest:${background}">
-      <div class="planner-unit-head"><span>${esc(w.destination)} · ${u.lengthFt}'</span><span>${esc(u.fe==='E'?'LEER':u.fe==='F'?'VOLL':'')}</span></div>
-      <strong>${esc(u.ctrNo)}</strong>
-      <div class="planner-unit-meta"><span title="Yardposition">⌖ ${esc(u.yardLocation)}</span><span title="Bruttogewicht">⚖ ${esc(kg(u.gross))}</span></div>
+    const green=window.NexoraPlannerEngine.isEmptyHapag(u);
+    const style=`left:${100*u.offsetFt/w.capacityFt}%;width:${100*u.lengthFt/w.capacityFt}%`;
+    const fullInfo=`${w.destination} · ${u.ctrNo} · ${u.lengthFt} Fuß · ${u.yardLocation} · ${kg(u.gross)}${green?' · Leerer HAPAG-Container':''}`;
+    return `<div class="planner-container-v2 ${green?'planner-container-hapag':'planner-container-red'}" style="${style}" title="${esc(fullInfo)}" aria-label="${esc(fullInfo)}">
+      <div class="planner-container-head"><span>${esc(w.destination)} · ${u.lengthFt}'</span><span>${esc(u.fe==='E'?'L':u.fe==='F'?'V':'')}</span></div>
+      <strong class="planner-container-no">${esc(u.ctrNo)}</strong>
+      <span class="planner-container-yard">${esc(u.yardLocation||'COMMUNITY')}</span>
+      <span class="planner-container-weight">${esc(kg(u.gross))}</span>
     </div>`;
   }
   function wagonView(w,index){
     const cap=w.capacityFt,assigned=w.units.length>0;
-    const segments=cap?w.units.map(u=>`<div class="planner-slot" style="left:${100*u.offsetFt/cap}%;width:${100*u.lengthFt/cap}%;--dest:${color(w.destination)}" title="${esc(u.ctrNo)} · ${u.lengthFt} Fuß"><span>${u.lengthFt}'</span></div>`).join(''):'';
-    const deck=cap?`<div class="planner-deck" aria-label="Schematische Stellplätze">${segments}</div>`:'<div class="planner-deck planner-unknown">Bauart / Stellplätze unbekannt</div>';
-    return `<article class="planner-wagon ${assigned?'':'planner-wagon-empty'}">
-      <div class="planner-wagon-top"><span class="planner-wagon-number">${esc(w.lnr||index+1)}</span>
-        <div class="planner-wagon-ident"><strong>${esc(w.wagonNo)}</strong>
-          <small>${esc(w.axles)} Achsen · LüP ${pos(Number(w.lup)/10)} m · ${cap?cap+"' Modell":"Kapazität unbekannt"} · Gleisposition ≈ ${pos(w.positionCenter)}</small></div>
-        <div class="planner-wagon-route">${assigned?`<i style="background:${color(w.destination)}"></i> ${esc(w.destination)}`:'Nicht belegt'}</div></div>
+    const size=cap||40;
+    const deck=cap?`<div class="planner-deck-v2" aria-label="Schematische Containerpositionen">${w.units.map(u=>unitView(u,w)).join('')}${!assigned?'<span class="planner-free">FREI</span>':''}</div>`:
+      '<div class="planner-deck-v2 planner-deck-unknown">STELLPLÄTZE UNBEKANNT</div>';
+    const n=Math.max(2,Math.min(6,Number(w.axles)||2));
+    const wheels=Array.from({length:n},(_,i)=>`<i class="planner-wheel" style="left:${8+84*(i/(n-1))}%"></i>`).join('');
+    const width=size*6.3;
+    return `<article class="planner-wagon-v2 ${assigned?'':'planner-wagon-empty-v2'}" style="width:${width}px" aria-label="Wagen ${esc(w.lnr||index+1)}, ${esc(w.wagonNo)}">
+      <div class="planner-wagon-head-v2"><div class="planner-wagon-ref"><span>WAGEN ${esc(w.lnr||index+1)}</span><strong>${esc(w.wagonNo)}</strong></div>
+        <div class="planner-wagon-target">${assigned?esc(w.destination):'—'}</div></div>
+      <div class="planner-wagon-spec"><span>${esc(w.axles)}A · ${cap?`${cap}'`:'Typ ?'}</span><span>${pos(w.positionStart)}–${pos(w.positionEnd)}</span></div>
       ${deck}
-      ${assigned?`<div class="planner-unit-grid">${w.units.map(u=>unitView(u,w)).join('')}</div>`:''}
-      <div class="planner-wagon-bottom"><span>${assigned?`${w.units.length} Container · ${w.assignedFt}/${cap} Fuß`:'Kein Container eingeplant'}</span>
-        <span><b>Ladungsgewicht: ${esc(kg(w.assignedGrossKg||0))}</b></span>
-        ${w.centerRuleApplied?'<span class="planner-centred">Einzelbeladung mittig</span>':''}</div>
+      <div class="planner-undercarriage"><div class="planner-carriage-frame"></div>${wheels}</div>
+      <div class="planner-wagon-summary"><strong>${esc(kg(w.assignedGrossKg||0))}</strong><span>${w.units.length} Container</span></div>
+      ${w.centerRuleApplied?'<div class="planner-wagon-centered">Mittige Einzelbeladung</div>':'<div class="planner-wagon-centered placeholder">&nbsp;</div>'}
     </article>`;
   }
   function render(plan,notes){
@@ -131,7 +138,12 @@
       ...(plan.yardEntries&&!plan.yardMatches?['Der Yard-Abzug enthält keine passenden, auswertbaren Stellplätze zu den Containern der Ladeliste.']:[])
     ];
     $('plannerWarnings').innerHTML=warnings.map(n=>`<p>⚠ ${esc(n)}</p>`).join('');
-    $('plannerWagonList').innerHTML=plan.wagons.map(wagonView).join('');
+    const view=$('plannerWagonList');
+    const previousScroll=view.scrollLeft;
+    $('plannerWagonTrack').innerHTML=plan.wagons.map(wagonView).join('');
+    $('plannerTrainInfo').textContent=`${plan.wagons.length} Wagen · ${plan.planned} Container · ${pos(plan.totalMeters)} m Zuglänge`;
+    // Keep the viewed portion when the optional Yard extract re-optimizes a plan.
+    view.scrollLeft=previousScroll;
     $('plannerUnplanned').innerHTML=plan.unplanned.length?`<div class="planner-table-wrap"><table><thead><tr><th>Container</th><th>Ziel</th><th>Yard</th><th>Größe</th><th>Gewicht</th><th>Grund</th></tr></thead><tbody>`+
       plan.unplanned.map(u=>`<tr><td>${esc(u.ctrNo)}</td><td>${esc(u.destination)}</td><td>${esc(u.yardLocation)}</td><td>${esc(u.lengthFt)}'</td><td>${esc(kg(u.gross))}</td><td>${esc(u.reason)}</td></tr>`).join('')+'</tbody></table></div>':
       '<p>Alle geeigneten Container wurden im Entwurf einem Wagen zugeordnet.</p>';
@@ -172,6 +184,14 @@
     finally{btn.disabled=false;btn.textContent='Verplanung berechnen →';}
   }
   $('plannerRun').addEventListener('click',()=>runPlanning(false));
+  const scrollView=$('plannerWagonList');
+  for (const [id,direction] of [['plannerScrollLeft',-1],['plannerScrollRight',1]]) {
+    $(id).addEventListener('click',()=>scrollView.scrollBy({left:direction*Math.max(450,Math.round(scrollView.clientWidth*.72)),behavior:'smooth'}));
+  }
+  scrollView.addEventListener('keydown',e=>{
+    if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+    e.preventDefault();scrollView.scrollBy({left:e.key==='ArrowRight'?310:-310,behavior:'smooth'});
+  });
   $('plannerDownload').addEventListener('click',()=>{
     if(!latest)return;
     const rows=[['HINWEIS','WAGENFOLGE','WAG_NO','ACHSSEN','LUEP_DM','GLEIS_POSITION','ZIELBAHNHOF','CONTAINER','FT','YARD_POSITION','GROSS_KG','SCHEMATISCHER_VERSATZ_FT','WAGEN_LADUNG_KG','ANMERKUNG']];
