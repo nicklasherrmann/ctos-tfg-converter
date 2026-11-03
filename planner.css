@@ -117,3 +117,17 @@
 .planner-wagon-track{height:319px}
 .planner-wagon-track::after{top:212px;bottom:auto}
 .planner-wagon-v2{height:260px}
+
+
+/* A4 Steckübersicht. The print document is separate from the horizontal
+   overflow viewport so every wagon appears on one landscape DIN-A4 sheet. */
+.planner-export-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:9px}
+.planner-export-actions .primary-btn{white-space:nowrap}
+.planner-print-sheet{display:none}
+@page{size:A4 landscape;margin:6mm}
+@media print{
+  html,body{width:auto!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important}
+  body>*:not(#plannerPrintSheet){display:none!important}
+  #plannerPrintSheet{display:block!important;width:285mm!important;height:198mm!important;margin:0!important;padding:0!important;overflow:hidden!important;break-before:avoid;break-after:avoid;page-break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  #plannerPrintSheet svg{width:100%!important;height:100%!important;display:block!important;max-width:none!important}
+}
