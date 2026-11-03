@@ -6,3 +6,12 @@
 
 /app.js
   Cache-Control: no-cache, no-store, must-revalidate
+
+/planner.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/planner-engine.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/planner.css
+  Cache-Control: no-cache, no-store, must-revalidate
