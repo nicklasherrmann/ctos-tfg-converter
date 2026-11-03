@@ -1,0 +1,81 @@
+.planner{border:1px solid #dbe4ed;border-radius:16px;background:#fff;padding:26px;box-shadow:0 18px 54px rgba(31,52,77,.09)}
+.planner-head h3{font-size:27px;letter-spacing:-.045em;margin:7px 0 7px;color:#12304e}
+.planner-head p{color:#6f8092;font-size:13px;line-height:1.5;margin:0 0 18px}
+.planner-eyebrow{font-size:10px;color:#0b5cab;font-weight:850;letter-spacing:.15em}
+.planner-beta{font-size:10px;letter-spacing:.06em;border:1px solid #b9cbe0;border-radius:6px;color:#4c7397;padding:4px 7px;vertical-align:middle}
+.planner-alert{border-left:4px solid #bb6d17;background:#fff7e9;padding:13px 15px;border-radius:8px;font-size:12px;color:#75521e;line-height:1.65}
+.planner-alert strong{display:block;font-size:13px;color:#764c16}
+.planner-uploads{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
+.planner-upload{position:relative;display:flex;min-height:148px;flex-direction:column;gap:8px;padding:18px 19px;border:1.5px dashed #b8c9d9;border-radius:11px;background:#f9fbfe;cursor:pointer;transition:.15s}
+.planner-upload:hover,.planner-upload.drag{border-color:#0b5cab;background:#f1f7ff}
+.planner-upload span{font-size:10px;color:#0b5cab;font-weight:850;letter-spacing:.12em}
+.planner-upload strong{font-size:15px;color:#15304e}
+.planner-upload small{font-size:11px;color:#657b90;overflow-wrap:anywhere}
+.planner-upload input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
+.planner-controls{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:18px}
+.planner-controls label{font-size:11px;color:#64778d;max-width:600px;line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+.planner-controls input{margin-top:3px}
+.planner-controls .primary-btn{white-space:nowrap}
+.planner-message{padding:12px 14px;border-radius:9px;margin-top:17px;font-size:12px;line-height:1.5}
+.planner-message.error{background:#fff0f1;color:#a8374d;border:1px solid #efc9cf}
+.planner-message.success{background:#ebf8f3;color:#117356;border:1px solid #bde3d3}
+.planner-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:24px}
+.planner-metrics>div{background:#f7fafc;border:1px solid #e0e9f1;border-radius:10px;padding:14px}
+.planner-metrics span{display:block;color:#7b8da1;font-size:9px;letter-spacing:.08em;text-transform:uppercase;font-weight:800}
+.planner-metrics strong{display:block;font-size:22px;color:#17314d;margin-top:7px}
+.planner-output-head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:28px;margin-bottom:12px}
+.planner-output-head h4,.planner-unplanned h4{margin:0;font-size:16px;color:#19334f}
+.planner-output-head p{margin:5px 0 0;font-size:11px;color:#7c8c9b}
+#plannerWarnings{display:grid;gap:6px;margin-bottom:18px}
+#plannerWarnings p{margin:0;border-left:3px solid #cf903c;background:#fffaf0;color:#765a30;padding:8px 11px;font-size:10px;line-height:1.5}
+.planner-wagon-list{display:grid;gap:10px}
+.planner-wagon{padding:12px 16px;border:1px solid #dee8f1;border-radius:11px;background:#fff}
+.planner-wagon-empty{background:#fbfcfe}
+.planner-wagon-top{display:flex;align-items:center;gap:10px}
+.planner-wagon-top>div:nth-child(2){min-width:0}
+.planner-wagon-top strong{display:block;font-size:12px;color:#203a55;overflow-wrap:anywhere}
+.planner-wagon-top small{font-size:10px;color:#8a97a6;display:block;margin-top:3px}
+.planner-wagon-number{border-radius:7px;background:#e9f1f8;min-width:32px;height:32px;display:grid;place-items:center;color:#0b5cab;font-weight:900;font-size:12px}
+.planner-wagon-route{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#425c73;white-space:nowrap}
+.planner-wagon-route i{width:9px;height:9px;border-radius:50%}
+.planner-deck{position:relative;height:44px;background:repeating-linear-gradient(90deg,#ecf2f7 0,#ecf2f7 calc(25% - 2px),#dae4ee calc(25% - 2px),#dae4ee 25%);border:1px solid #cdd9e4;border-radius:6px;margin:12px 0 7px;overflow:hidden}
+.planner-deck::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:#758b9c}
+.planner-unknown{display:flex;align-items:center;justify-content:center;color:#8d98a5;font-size:10px}
+.planner-container{position:absolute;top:3px;height:36px;border:1px solid rgba(255,255,255,.6);border-radius:5px;color:#fff;padding:5px 6px;overflow:hidden;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.planner-container strong{display:block;color:white;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.planner-container span{color:rgba(255,255,255,.85);font-size:9px;white-space:nowrap}
+.planner-wagon-bottom{display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap;color:#728397;font-size:10px}
+.planner-centred{color:#0e8272;font-weight:750}
+.planner-unplanned{margin-top:28px;border-top:1px solid #e3eaf1;padding-top:19px}
+.planner-unplanned>div{font-size:12px;color:#5f7489;margin-top:12px}
+.planner-table-wrap{overflow:auto;max-height:350px;border:1px solid #e2e9f0;border-radius:9px}
+@media(max-width:760px){.planner{padding:14px}.planner-uploads{grid-template-columns:1fr}.planner-metrics{grid-template-columns:repeat(2,1fr)}.planner-controls,.planner-output-head{align-items:stretch;flex-direction:column}.planner-wagon-top{flex-wrap:wrap}.planner-wagon-route{margin-left:0}.planner-container span{display:none}}
+/* Train Planner v1 – 3 Uploads, dauerhaft lesbare Containerkarten */
+.planner{margin-top:0}
+.planner-uploads{grid-template-columns:repeat(3,minmax(0,1fr))}
+.planner-upload{min-height:144px}
+.planner-upload-optional{border-color:#b6d8d0;background:#f5faf8}
+.planner-upload-optional span{color:#157d69}
+.planner-actions{display:flex;align-items:center;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.planner-wagon-ident{flex:1;min-width:0}
+.planner-wagon-ident small{line-height:1.4}
+.planner-legend{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:-4px 0 16px;color:#728497;font-size:11px}
+.planner-legend-dot{display:inline-block;width:9px;height:9px;background:#167a8e;border-radius:50%;margin-right:6px}
+.planner-deck{height:34px;margin:12px 0 9px;background:repeating-linear-gradient(90deg,#ebf1f7 0%,#ebf1f7 calc(25% - 1px),#d9e4ed calc(25% - 1px),#d9e4ed 25%)}
+.planner-slot{position:absolute;top:2px;bottom:3px;background:var(--dest);border:1px solid rgba(255,255,255,.85);border-radius:4px;display:flex;align-items:center;justify-content:center;color:white;font-weight:850;font-size:11px}
+.planner-unit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:12px}
+.planner-unit{border:1px solid color-mix(in srgb,var(--dest),white 65%);background:color-mix(in srgb,var(--dest),white 94%);border-left:4px solid var(--dest);border-radius:8px;padding:10px 12px;min-width:0;color:#213950}
+.planner-unit-head{display:flex;justify-content:space-between;gap:10px;color:var(--dest);font-size:10px;font-weight:800;letter-spacing:.015em;margin-bottom:5px}
+.planner-unit strong{display:block;font-size:13px;letter-spacing:.03em;overflow-wrap:anywhere;color:#18324d}
+.planner-unit-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:11px;color:#476177;margin-top:9px}
+.planner-unit-meta>span:first-child{font-weight:800}
+.planner-wagon-bottom b{color:#2f4b60}
+.planner-centred{color:#0f7e6b!important}
+.planner-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+.planner-metrics strong{font-size:19px;overflow-wrap:anywhere}
+#plannerWarnings p:first-child{border-left-color:#c57728;background:#fff4e2;font-weight:700}
+.planner-unknown{margin:12px 0}
+.mode-switch.quad{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(min-width:1080px){.mode-switch.quad{grid-template-columns:repeat(4,minmax(0,1fr))}.mode-switch.quad .mode-btn{padding:12px 10px;column-gap:8px}.mode-switch.quad .mode-title{font-size:12px}.mode-switch.quad .mode-desc{font-size:10px}.mode-switch.quad .mode-kicker{width:35px;height:35px}}
+@media(max-width:850px){.planner-uploads{grid-template-columns:1fr 1fr}.planner-upload-optional{grid-column:1/-1}}
+@media(max-width:580px){.planner-uploads{grid-template-columns:1fr}.planner-upload-optional{grid-column:auto}.planner-unit-grid{grid-template-columns:1fr}.planner-controls{align-items:stretch}.planner-actions{justify-content:stretch}.planner-actions>*{flex:1}.planner-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
