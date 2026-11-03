@@ -76,3 +76,10 @@ Verriegelungspositionen und Lastgrenzen müssen extern geprüft werden.
 - Containerkennzeichen von 20-Fuß-Einheiten werden in der Zugansicht und im A4-Ausdruck auf zwei Zeilen umgebrochen (z. B. HLBU / 1234567).
 - 40-Fuß-Einheiten behalten ihre Containernummer in einer Zeile.
 - Die Darstellung ändert weder die eingelesene Containernummer noch Planung, Datenabgleich oder Export.
+
+
+## v6: Betriebsprioritäten und Zugorientierung
+- Vollcontainer werden **vor Leercontainern** verplant. Erst danach werden leere Container in freie Restplätze derselben Zielrelation bzw. auf noch freie Wagen gelegt. Dadurch können Leereinheiten Vollcontainer nicht verdrängen.
+- Über **„Wagenreihung drehen“** wird die eingelesene MITVEAN-Wagenfolge bei Bedarf umgekehrt. Die Wagen behalten ihre Wagennummern und Laufnummern. Gleis-/Yardpositionen und die Optimierung werden aus der umgekehrten tatsächlichen Reihenfolge **neu berechnet**, ohne die Dateien erneut hochzuladen.
+- Die A4-Steckübersicht folgt ebenfalls der tatsächlichen eingestellten Wagenreihenfolge.
+- Unverändert: keine technische Verladefreigabe; Lastgrenzen und Verriegelungspositionen müssen extern geprüft werden.

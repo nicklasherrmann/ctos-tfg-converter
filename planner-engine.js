@@ -73,9 +73,10 @@
     }
     return {groups,unplanned,yardMatches,unknownMatches,yardEntries:lookup.byCtr.size,yardWarnings:lookup.warnings};
   }
-  function wagonLayout(wagons){
+  function wagonLayout(wagons, reverse=false){
     const sorted=[...wagons].map(w=>({...w,capacityFt:classifyWagon(w),destination:null,
       units:[],assignedFt:0,assignedGrossKg:0,centerRuleApplied:false})).sort((a,b)=>Number(a.lnr)-Number(b.lnr));
+    if(reverse)sorted.reverse();
     const totalMeters=sorted.reduce((s,w)=>s+(Number(w.lup)||0)/10,0);
     // Position 100 = letztes Wagenende. Länge wird von rechts nach links abgetragen.
     let cursor=100-totalMeters*fieldWidth/calibrationMeters;
@@ -179,50 +180,81 @@
     const wagons=layout.wagons.map(w=>({...w,units:[]}));
     const avail=wagons.filter(w=>w.capacityFt!==null);
     const unplanned=[];
-    const work=[...groups.entries()].map(([destination,units])=>({destination,units:[...units],
-      ft:units.reduce((s,u)=>s+u.lengthFt,0),
-      center:units.filter(u=>u.yardPosition!==null).reduce((s,u)=>s+u.yardPosition,0)/
-        (units.filter(u=>u.yardPosition!==null).length||1)}));
-    if(mode===1)work.sort((a,b)=>a.ft-b.ft || stable(a.destination,b.destination));
-    else if(mode===2)work.sort((a,b)=>a.center-b.center || b.ft-a.ft);
-    else work.sort((a,b)=>b.ft-a.ft || stable(a.destination,b.destination));
-    // Zielbahnhöfe bleiben ausschließlich auf jeweils einem Wagen.
-    for(const group of work){
+    const makeWork=(wantEmpty)=>[...groups.entries()].map(([destination,entries])=>{
+      const units=entries.filter(u=>(String(u.fe||'').trim().toUpperCase()==='E')===wantEmpty);
+      const known=units.filter(u=>u.yardPosition!==null);
+      return {destination,units,ft:units.reduce((s,u)=>s+u.lengthFt,0),
+        center:known.reduce((s,u)=>s+u.yardPosition,0)/(known.length||1)};
+    }).filter(g=>g.units.length);
+    const sortWork=work=>{
+      if(mode===1)work.sort((a,b)=>a.ft-b.ft || stable(a.destination,b.destination));
+      else if(mode===2)work.sort((a,b)=>a.center-b.center || b.ft-a.ft);
+      else work.sort((a,b)=>b.ft-a.ft || stable(a.destination,b.destination));
+      return work;
+    };
+    const fullWork=sortWork(makeWork(false));
+    const emptyWork=sortWork(makeWork(true));
+    // Verbindliche Priorität: Erst sämtliche Vollcontainer verplanen.
+    // Ein Leercontainer darf KEINEN Platz belegen, der noch für einen passenden
+    // Vollcontainer benötigt wird. Erst danach werden Leercontainer ergänzt.
+    function putOnFreeWagons(group,reason){
       while(group.units.length && avail.length){
         const options=avail.map(w=>({wagon:w,pack:choosePack(w,group.units,mode)})).filter(x=>x.pack);
         if(!options.length)break;
-        options.sort((a,b)=>b.pack.score-a.pack.score || a.pack.travel-b.pack.travel || a.wagon.lnr-b.wagon.lnr);
+        options.sort((a,b)=>b.pack.score-a.pack.score || a.pack.travel-b.pack.travel ||
+          a.wagon.positionCenter-b.wagon.positionCenter);
         const {wagon,pack}=options[0];
-        const placed=placements(pack.selected,wagon);
-        wagon.units=placed.units;
-        wagon.destination=group.destination;
-        wagon.assignedFt=pack.ft;
-        wagon.assignedGrossKg=placed.units.reduce((s,u)=>s+u.gross,0);
-        wagon.centerRuleApplied=placed.centered;
+        assignUnits(wagon,pack.selected);
         const used=new Set(pack.selected.map(u=>u.inputIndex));
         group.units=group.units.filter(u=>!used.has(u.inputIndex));
         avail.splice(avail.indexOf(wagon),1);
       }
-      for(const u of group.units)unplanned.push({...u,reason:'Kein verfügbarer passender Wagen / Stellplatz für diesen Zielbahnhof'});
+      for(const u of group.units)unplanned.push({...u,reason});
+    }
+    for(const group of fullWork){
+      putOnFreeWagons(group,'Vollcontainer: kein verfügbarer passender Wagen / Stellplatz für diesen Zielbahnhof');
+    }
+    // Nur nach der Verplanung aller Vollcontainer: Leereinheiten möglichst
+    // in freie Restplätze von Wagen desselben Zielbahnhofs ergänzen.
+    for(const group of emptyWork){
+      for(const w of wagons){
+        if(!group.units.length)break;
+        if(!w.units.length || w.destination!==group.destination)continue;
+        const remainingFt=w.capacityFt-w.assignedFt;
+        if(remainingFt<20)continue;
+        const pack=choosePack({...w,capacityFt:remainingFt},group.units,mode);
+        if(!pack)continue;
+        assignUnits(w,[...w.units,...pack.selected]);
+        const used=new Set(pack.selected.map(u=>u.inputIndex));
+        group.units=group.units.filter(u=>!used.has(u.inputIndex));
+      }
+    }
+    for(const group of emptyWork){
+      putOnFreeWagons(group,'Leercontainer zurückgestellt: kein verbleibender passender Stellplatz');
     }
     improveLocality(wagons);
     const planned=wagons.reduce((s,w)=>s+w.units.length,0);
+    const plannedFull=wagons.reduce((s,w)=>s+w.units.filter(u=>String(u.fe||'').trim().toUpperCase()!=='E').length,0);
+    const plannedEmpty=planned-plannedFull;
     const totalDistance=wagons.reduce((s,w)=>s+w.units.reduce((acc,u)=>acc+
       (u.yardPosition===null?0:Math.abs(u.yardPosition-w.positionCenter)),0),0);
     const yardPlanned=wagons.reduce((s,w)=>s+w.units.filter(u=>u.yardPosition!==null).length,0);
     const unusedSpace=wagons.reduce((s,w)=>s+(w.units.length?(w.capacityFt-w.assignedFt):0),0);
-    return {wagons,unplanned,planned,totalDistance,yardPlanned,unusedSpace};
+    return {wagons,unplanned,planned,plannedFull,plannedEmpty,totalDistance,yardPlanned,unusedSpace};
   }
-  function allocate(wagonInput, entriesInput, yardInput=[]){
-    const layout=wagonLayout(wagonInput);
+  function allocate(wagonInput, entriesInput, yardInput=[], options={}){
+    const reverse=Boolean(options && options.reverse);
+    const layout=wagonLayout(wagonInput,reverse);
     const normalized=normalizeUnits(entriesInput,yardInput);
     const attempts=[0,1,2].map(m=>simulate(layout,normalized.groups,m));
-    attempts.sort((a,b)=>b.planned-a.planned || a.unusedSpace-b.unusedSpace ||
-      a.totalDistance-b.totalDistance);
+    // Die Priorität der Vollcontainer schlägt die Gesamtanzahl und die Yardnähe.
+    attempts.sort((a,b)=>b.plannedFull-a.plannedFull || b.planned-a.planned ||
+      a.unusedSpace-b.unusedSpace || a.totalDistance-b.totalDistance);
     const best=attempts[0];
     const unplanned=[...normalized.unplanned,...best.unplanned];
     const wagons=best.wagons;
-    return {wagons,unplanned,planned:best.planned,total:entriesInput.length,
+    return {wagons,unplanned,planned:best.planned,plannedFull:best.plannedFull,
+      plannedEmpty:best.plannedEmpty,reverse,total:entriesInput.length,
       destinations:[...normalized.groups.keys()],activeWagons:wagons.filter(w=>w.units.length).length,
       totalGrossKg:wagons.reduce((s,w)=>s+w.assignedGrossKg,0),
       capacityFt:wagons.reduce((s,w)=>s+(w.capacityFt||0),0),

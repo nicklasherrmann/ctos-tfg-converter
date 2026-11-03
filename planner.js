@@ -29,9 +29,9 @@
       <div class="planner-legend planner-legend-v2"><span><i class="planner-legend-red"></i> Container</span><span><i class="planner-legend-green"></i> Leere HAPAG-Container</span><span>Gleisposition 1–100 · Zugende bei 100</span></div>
       <section class="planner-train-panel" aria-label="Horizontaler Zugladeplan">
         <div class="planner-train-titlebar"><span class="planner-title-icon" aria-hidden="true">▣</span><strong>TFG · Zugverplanung</strong><span class="planner-train-status">SCHEMATISCHER ENTWURF</span></div>
-        <div class="planner-train-toolbar"><span id="plannerTrainInfo">Zugansicht</span><div class="planner-train-nav"><button id="plannerScrollLeft" class="planner-scroll-button" type="button" title="Nach links scrollen" aria-label="Nach links scrollen">◀</button><button id="plannerScrollRight" class="planner-scroll-button" type="button" title="Nach rechts scrollen" aria-label="Nach rechts scrollen">▶</button></div></div>
+        <div class="planner-train-toolbar"><span id="plannerTrainInfo">Zugansicht</span><div class="planner-train-nav"><button id="plannerReverse" class="planner-scroll-button planner-reverse-button" type="button" aria-pressed="false" title="Tatsächliche Wagenreihung im Ladegleis umkehren und Verplanung neu berechnen">⇄ Wagenreihung drehen</button><button id="plannerScrollLeft" class="planner-scroll-button" type="button" title="Nach links scrollen" aria-label="Nach links scrollen">◀</button><button id="plannerScrollRight" class="planner-scroll-button" type="button" title="Nach rechts scrollen" aria-label="Nach rechts scrollen">▶</button></div></div>
         <div id="plannerWagonList" class="planner-wagon-list" tabindex="0" role="region" aria-label="Zug mit horizontaler Scrollfunktion"><div id="plannerWagonTrack" class="planner-wagon-track"></div></div>
-        <div class="planner-train-footer"><span>← Seitlich scrollen · Pfeiltasten oder Scrollleiste →</span><span>Reihenfolge gemäß MITVEAN · nicht maßstabsgerecht</span></div>
+        <div class="planner-train-footer"><span>← Seitlich scrollen · Pfeiltasten oder Scrollleiste →</span><span id="plannerOrderLabel">Reihenfolge gemäß MITVEAN · nicht maßstabsgerecht</span></div>
       </section>
       <div class="planner-unplanned"><h4>Nicht verplante Container</h4><div id="plannerUnplanned"></div></div>
     </div>`;
@@ -40,7 +40,7 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const kg=n=>n===null||n===undefined||!Number.isFinite(Number(n))?'–':Math.round(Number(n)).toLocaleString('de-DE')+' kg';
   const pos=n=>Number.isFinite(n)?n.toFixed(1).replace('.',','):'–';
-  let parsed=null,latest=null;
+  let parsed=null,latest=null,reversed=false;
   function showMessage(message,kind='error'){
     const b=$('plannerMessage');b.className='planner-message '+kind;b.textContent=message;
   }
@@ -144,6 +144,7 @@
     const warnings=[
       'Nur Verplanungsvorschlag: keine geprüften Lastgrenzen, Achslasten, zulässigen Containerkombinationen und konkreten Verriegelungspositionen.',
       ...notes,
+      ...(plan.unplanned.some(u=>String(u.fe||'').trim().toUpperCase()==='E')?['Bei Platzmangel werden Leercontainer erst nach allen möglichen Vollcontainern eingeplant.']:[]),
       ...plan.yardWarnings,
       ...(plan.unknownWagons.length?[`${plan.unknownWagons.length} Wagen ohne eindeutig zuordenbare Stellplatzkapazität bleiben unbeladen.`]:[]),
       ...(plan.unknownMatches?[`${plan.unknownMatches} Einheiten mit nicht als Yardposition lesbarem Standort wurden als COMMUNITY behandelt.`]:[]),
@@ -153,7 +154,8 @@
     const view=$('plannerWagonList');
     const previousScroll=view.scrollLeft;
     $('plannerWagonTrack').innerHTML=plan.wagons.map(wagonView).join('');
-    $('plannerTrainInfo').textContent=`${plan.wagons.length} Wagen · ${plan.planned} Container · ${pos(plan.totalMeters)} m Zuglänge`;
+    $('plannerTrainInfo').textContent=`${plan.wagons.length} Wagen · ${plan.planned} Container · ${pos(plan.totalMeters)} m · ${plan.reverse?'Reihung umgekehrt':'MITVEAN-Reihung'}`;
+    $('plannerOrderLabel').textContent=`${plan.reverse?'Wagenreihung gegenüber MITVEAN umgekehrt':'Reihenfolge gemäß MITVEAN'} · nicht maßstabsgerecht`;
     // Keep the viewed portion when the optional Yard extract re-optimizes a plan.
     view.scrollLeft=previousScroll;
     $('plannerUnplanned').innerHTML=plan.unplanned.length?`<div class="planner-table-wrap"><table><thead><tr><th>Container</th><th>Ziel</th><th>Yard</th><th>Größe</th><th>Gewicht</th><th>Grund</th></tr></thead><tbody>`+
@@ -186,7 +188,7 @@
         const yd=parseYardFile(new Uint8Array(await yardFile.arrayBuffer()));
         yardRows=yd.rows;
       }
-      const plan=window.NexoraPlannerEngine.allocate([...parsed.wagonData.wagons.values()],parsed.listData.entries,yardRows);
+      const plan=window.NexoraPlannerEngine.allocate([...parsed.wagonData.wagons.values()],parsed.listData.entries,yardRows,{reverse:reversed});
       if(plan.planned+plan.unplanned.length!==plan.total)throw new Error('Zuordnungsfehler: Containermengen stimmen nicht überein.');
       if(plan.wagons.some(w=>w.units.some(u=>u.destination!==w.destination)))throw new Error('Interner Fehler: Zielbahnhöfe auf demselben Wagen vermischt.');
       latest={plan};render(plan,parsed.notes);
@@ -196,6 +198,15 @@
     finally{btn.disabled=false;btn.textContent='Verplanung berechnen →';}
   }
   $('plannerRun').addEventListener('click',()=>runPlanning(false));
+  $('plannerReverse').addEventListener('click',async()=>{
+    reversed=!reversed;
+    const btn=$('plannerReverse');
+    btn.setAttribute('aria-pressed',String(reversed));
+    btn.textContent=reversed?'⇄ Reihung: GEDREHT':'⇄ Wagenreihung drehen';
+    if(parsed){await runPlanning(true);}else showMessage(reversed?
+      'Umgekehrte Wagenreihung ausgewählt. Nach dem Upload wird der Zug in dieser Richtung verplant.':
+      'Normale Wagenreihung gemäß MITVEAN ausgewählt.','success');
+  });
   const scrollView=$('plannerWagonList');
   for (const [id,direction] of [['plannerScrollLeft',-1],['plannerScrollRight',1]]) {
     $(id).addEventListener('click',()=>scrollView.scrollBy({left:direction*Math.max(450,Math.round(scrollView.clientWidth*.72)),behavior:'smooth'}));
@@ -253,7 +264,7 @@
     svg.push(txt(27,32,'NEXORA  ·  TFG TRAIN PLANNER',18,'#164568',true));
     svg.push(txt(27,51,'STECKÜBERSICHT · GESAMTZUG',13,'#164568',true));
     svg.push(txt(1110,33,'DIN A4  ·  QUERFORMAT  ·  1 SEITE',11,'#365d79',true,'text-anchor="end"'));
-    svg.push(txt(1110,51,`${wagonCount} Wagen   |   ${plan.planned}/${plan.total} Container   |   ${pos(plan.totalMeters)} m`,11,'#365d79',false,'text-anchor="end"'));
+    svg.push(txt(1110,51,`${wagonCount} Wagen  |  ${plan.planned}/${plan.total} Container  |  ${plan.reverse?'REIHUNG GEDREHT':'MITVEAN-REIHUNG'}`,11,'#365d79',false,'text-anchor="end"'));
     svg.push(box(12,70,1116,29,'#fff2df','#e4ad65',1,3));
     svg.push(txt(24,89,'PRÜFENTWURF · Keine Verladefreigabe: Verriegelungspositionen, Achslasten, Traglast und Kombinationen vor Ort prüfen.',12,'#834d1b',true));
     let displayed=0;
