@@ -70,3 +70,9 @@ Verriegelungspositionen und Lastgrenzen müssen extern geprüft werden.
 ## v4 Ergänzung
 - In der horizontalen Zugansicht steht unter der 20'/40'-Angabe nun in kleiner Schrift die vollständige Containernummer.
 - In der A4-Steckübersicht wird die Containernummer ebenfalls unter der Größenangabe innerhalb des Containers dargestellt.
+
+
+## v5 – 20-Fuß-Kennzeichnung
+- Containerkennzeichen von 20-Fuß-Einheiten werden in der Zugansicht und im A4-Ausdruck auf zwei Zeilen umgebrochen (z. B. HLBU / 1234567).
+- 40-Fuß-Einheiten behalten ihre Containernummer in einer Zeile.
+- Die Darstellung ändert weder die eingelesene Containernummer noch Planung, Datenabgleich oder Export.
