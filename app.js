@@ -2040,6 +2040,11 @@ function parseLadeliste(bytes) {
   }
 
   const idx = headerMatch.indices;
+  // Optional: carrier/shipper are used solely for the Planner's color coding.
+  // These columns must NOT become required for existing converter imports.
+  const optionalHeaders = (matrix[headerMatch.row] || []).map(normalizeHeader);
+  const carrierCol = optionalHeaders.findIndex(h => ['reeder','reederei','shippingline','shippingcompany','liner'].includes(h));
+  const shipperCol = optionalHeaders.findIndex(h => ['auftraggebername','auftraggeber','customername'].includes(h));
   const entries = [], warnings = [], dates = new Set(), destinations = new Set();
 
   for (let r = headerMatch.row + 1; r < matrix.length; r++) {
@@ -2078,6 +2083,8 @@ function parseLadeliste(bytes) {
       releaseOrder,
       bookNo:clean(row[idx.bookNo]),
       billOfLading:clean(row[idx.billOfLading]),
+      carrier:carrierCol >= 0 ? clean(row[carrierCol]) : '',
+      shipper:shipperCol >= 0 ? clean(row[shipperCol]) : '',
       date
     });
   }
