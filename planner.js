@@ -99,8 +99,9 @@
     const style=`left:${100*u.offsetFt/w.capacityFt}%;width:${100*u.lengthFt/w.capacityFt}%`;
     const fullInfo=`${w.destination} · ${u.ctrNo} · ${u.lengthFt} Fuß · ${u.yardLocation} · ${kg(u.gross)}${green?' · Leerer HAPAG-Container':''}`;
     return `<div class="planner-container-v2 ${green?'planner-container-hapag':'planner-container-red'}" style="${style}" title="${esc(fullInfo)}" aria-label="${esc(fullInfo)}">
-      <div class="planner-container-head"><span>${esc(w.destination)} · ${u.lengthFt}'</span><span>${esc(u.fe==='E'?'L':u.fe==='F'?'V':'')}</span></div>
-      <strong class="planner-container-no">${esc(u.ctrNo)}</strong>
+      <div class="planner-container-head"><span>${esc(w.destination)}</span><span>${esc(u.fe==='E'?'L':u.fe==='F'?'V':'')}</span></div>
+      <strong class="planner-container-size">${esc(u.lengthFt)}'</strong>
+      <span class="planner-container-no-small">${esc(u.ctrNo)}</span>
       <span class="planner-container-yard">${esc(u.yardLocation||'COMMUNITY')}</span>
       <span class="planner-container-weight">${esc(kg(u.gross))}</span>
     </div>`;
@@ -277,8 +278,10 @@
             const wUnit=(Number(u.lengthFt)/capacity)*frameW;
             const hue=window.NexoraPlannerEngine.isEmptyHapag(u)?'#238450':'#c93841';
             svg.push(box(xUnit+0.6,deckY+1,Math.max(1,wUnit-1.2),deckH-2,hue,'#ffffff',.8,1));
-            const textSize=Math.max(7,Math.min(12, wUnit/2.4))*rowFactor;
-            svg.push(txt(xUnit+wUnit/2,deckY+deckH/2+textSize*.32,`${u.lengthFt}'`,textSize,'#ffffff',true,'text-anchor="middle"'));
+            const textSize=Math.max(7,Math.min(12, wUnit/2.5))*rowFactor;
+            const ctrSize=Math.max(3.9,Math.min(7.2, wUnit/5.8))*rowFactor;
+            svg.push(txt(xUnit+wUnit/2,deckY+deckH/2-1.1*rowFactor,`${u.lengthFt}'`,textSize,'#ffffff',true,'text-anchor="middle"'));
+            svg.push(txt(xUnit+wUnit/2,deckY+deckH/2+textSize*.78,`${u.ctrNo}`,ctrSize,'#ffffff',false,'text-anchor="middle"'));
           }
         }else{
           svg.push(txt(x+frameW/2,deckY+deckH/2+3*rowFactor,'?',10*rowFactor,'#627a8c',true,'text-anchor="middle"'));
