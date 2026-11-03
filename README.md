@@ -83,3 +83,6 @@ Verriegelungspositionen und Lastgrenzen müssen extern geprüft werden.
 - Über **„Wagenreihung drehen“** wird die eingelesene MITVEAN-Wagenfolge bei Bedarf umgekehrt. Die Wagen behalten ihre Wagennummern und Laufnummern. Gleis-/Yardpositionen und die Optimierung werden aus der umgekehrten tatsächlichen Reihenfolge **neu berechnet**, ohne die Dateien erneut hochzuladen.
 - Die A4-Steckübersicht folgt ebenfalls der tatsächlichen eingestellten Wagenreihenfolge.
 - Unverändert: keine technische Verladefreigabe; Lastgrenzen und Verriegelungspositionen müssen extern geprüft werden.
+
+## v7 – fortlaufende Wagenanzeige
+Die linke Seite der Zugansicht und die A4-Steckübersicht beginnen auch bei gedrehter Reihung stets mit „WAGEN 1“. Die folgende Wagenzahl entspricht der Position in der tatsächlich dargestellten physischen Reihung, nicht der ursprünglichen MITVEAN-Laufnummer. Wagenidentität/Wagennummer, tatsächliche Richtung und Yard-Optimierung bleiben unverändert. Auch die CSV-Spalte `WAGENFOLGE` zeigt diese fortlaufende Position.

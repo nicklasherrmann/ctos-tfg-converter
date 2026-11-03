@@ -120,3 +120,18 @@ assert.equal(isEmptyHapag({fe:'E',ctrNo:'HLBU9999999'}),false);
   assert.equal(normal.wagons.find(w=>w.units.length)?.lnr,2);
   assert.equal(reversed.wagons.find(w=>w.units.length)?.lnr,1);
 }
+
+// v7: Die angezeigte Wagenposition zählt IMMER von links nach rechts ab 1.
+// Die Original-Laufnummer aus MITVEAN bleibt für Sortierung/Zuordnung erhalten.
+{
+  const wagons=[w(1,2,140),w(2,6,267),w(3,4,196)];
+  const entries=[{...u('F1','CTA',40),fe:'F'}];
+  for(const reverse of [false,true]){
+    const p=allocate(wagons,entries,[],{reverse});
+    assert.deepEqual(p.wagons.map(w=>w.displaySeq),[1,2,3]);
+    assert.deepEqual(p.wagons.map(w=>w.wagonNo),
+      (reverse?[...wagons].reverse():wagons).map(w=>w.wagonNo));
+    assert.deepEqual(p.wagons.map(w=>w.lnr),reverse?[3,2,1]:[1,2,3]);
+    assert.ok(Math.abs(p.wagons.at(-1).positionEnd-100)<1e-9);
+  }
+}
