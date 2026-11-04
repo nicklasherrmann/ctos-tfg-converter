@@ -2045,6 +2045,10 @@ function parseLadeliste(bytes) {
   const optionalHeaders = (matrix[headerMatch.row] || []).map(normalizeHeader);
   const carrierCol = optionalHeaders.findIndex(h => ['reeder','reederei','shippingline','shippingcompany','liner'].includes(h));
   const shipperCol = optionalHeaders.findIndex(h => ['auftraggebername','auftraggeber','customername'].includes(h));
+  // Optional: older lists may have no Gefahrgut field; the current TFG list
+  // uses the header "Gefahrgut" and lists UN numbers in that column.
+  const hazardCols = optionalHeaders.flatMap((h,i)=>
+    ['gefahrgut','gefahrgutunnr','gefahrgutunnummer','unnr','unnummer','unno','unnumber','dangerousgoods'].includes(h)?[i]:[]);
   const entries = [], warnings = [], dates = new Set(), destinations = new Set();
 
   for (let r = headerMatch.row + 1; r < matrix.length; r++) {
@@ -2074,6 +2078,11 @@ function parseLadeliste(bytes) {
     const carrier = carrierCol >= 0 ? clean(row[carrierCol]) : '';
     const shipper = shipperCol >= 0 ? clean(row[shipperCol]) : '';
     const outboundRouting = NexoraTfgOutboundRules.classify({fe,carrier,shipper,releaseOrder});
+    const hazardInputs=hazardCols.map(i=>clean(row[i])).filter(x=>x && !/^(?:N|NEIN|NO|NONE|0)$/i.test(x));
+    const hazardRaw=hazardInputs.join(' / ');
+    const hazardInfo=window.NexoraPlannerEngine?.parseHazard(hazardRaw) ||
+      {hazardous:!!hazardRaw,unNo:'',requiresReview:!!hazardRaw};
+    if(hazardInfo.requiresReview)warnings.push(`Zeile ${r+1}: Gefahrgutkennzeichnung „${hazardRaw}“ ohne eindeutige vierstellige UN-Nummer – fachlich prüfen.`);
 
     entries.push({
       ctrNo,
@@ -2088,6 +2097,9 @@ function parseLadeliste(bytes) {
       billOfLading:clean(row[idx.billOfLading]),
       carrier,
       shipper,
+      hazardRaw,
+      hazardous:hazardInfo.hazardous,
+      unNo:hazardInfo.unNo,
       ...outboundRouting,
       date
     });
