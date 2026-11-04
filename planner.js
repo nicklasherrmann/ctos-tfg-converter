@@ -10,8 +10,9 @@
       <p>Wagenliste und TFG-Ladeliste laden. Der Yard-Abzug ist optional und kann jederzeit ergänzt werden.</p></div>
     <div class="planner-alert"><strong>Keine Verladefreigabe</strong>
       Die Zuteilung ist ein unverbindlicher Planungsentwurf. Die zulässigen Verriegelungspositionen,
-      tatsächlichen Wagenlastgrenzen, Achslastverteilung, Containerkombinationen und Gefahrgutvorgaben
-      sind noch nicht technisch geprüft. Vor einer realen Verladung fachlich freigeben lassen.</div>
+      tatsächlichen Wagenlastgrenzen (außer unserer Planungsgrenze von 20.000 kg Containerbrutto für 2-Achser),
+      Achslastverteilung, Containerkombinationen und Gefahrgutvorgaben sind nicht technisch geprüft.
+      Vor einer realen Verladung fachlich freigeben lassen.</div>
     <div class="planner-uploads">
       <label class="planner-upload" for="plannerWagons"><span>01 · PFLICHT</span><strong>MITVEAN-Wagenliste</strong><small id="plannerWagonName">Wagenlisten-PDF auswählen</small><input id="plannerWagons" type="file" accept=".pdf,application/pdf"></label>
       <label class="planner-upload" for="plannerList"><span>02 · PFLICHT</span><strong>TFG-Ladeliste</strong><small id="plannerListName">Excel-Datei · Blatt „Export“</small><input id="plannerList" type="file" accept=".xlsx,.xls"></label>
@@ -129,10 +130,10 @@
     return `<article class="planner-wagon-v2 ${assigned?'':'planner-wagon-empty-v2'}" style="width:${width}px" aria-label="Wagen ${esc(w.displaySeq||index+1)}, ${esc(w.wagonNo)}">
       <div class="planner-wagon-head-v2"><div class="planner-wagon-ref"><span>WAGEN ${esc(w.displaySeq||index+1)}</span><strong>${esc(w.wagonNo)}</strong></div>
         <div class="planner-wagon-target">${assigned?esc(w.destination):'—'}</div></div>
-      <div class="planner-wagon-spec"><span>${esc(w.axles)}A · ${cap?`${cap}'`:'Typ ?'}</span><span>${pos(w.positionStart)}–${pos(w.positionEnd)}</span></div>
+      <div class="planner-wagon-spec"><span>${esc(w.axles)}A · ${cap?`${cap}'`:'Typ ?'}${Number(w.axles)===2?' · max. 20 t':''}</span><span>${pos(w.positionStart)}–${pos(w.positionEnd)}</span></div>
       ${deck}
       <div class="planner-undercarriage"><div class="planner-carriage-frame"></div>${wheels}</div>
-      <div class="planner-wagon-summary"><strong>${esc(kg(w.assignedGrossKg||0))}</strong><span>${w.units.length} Container</span></div>
+      <div class="planner-wagon-summary"><strong>${esc(kg(w.assignedGrossKg||0))}</strong><span>${w.units.length} Container${Number(w.axles)===2?' · max. 20.000 kg':''}</span></div>
       ${w.centerRuleApplied?'<div class="planner-wagon-centered">Mittige Einzelbeladung</div>':'<div class="planner-wagon-centered placeholder">&nbsp;</div>'}
     </article>`;
   }
@@ -143,7 +144,7 @@
       ['Ladungsgewicht',kg(plan.totalGrossKg)],['Yard-Standorte',`${plan.yardMatches} / ${plan.total}`]];
     $('plannerMetrics').innerHTML=metrics.map(([label,value])=>`<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
     const warnings=[
-      'Nur Verplanungsvorschlag: keine geprüften Lastgrenzen, Achslasten, zulässigen Containerkombinationen und konkreten Verriegelungspositionen.',
+      '2-Achser: maximal 20.000 kg gesamte Container-Bruttomasse (betriebliche Sicherheitsgrenze). Sonstige Lastgrenzen, Achslasten, zulässige Containerkombinationen und Verriegelungspositionen nicht geprüft.',
       ...notes,
       ...(plan.unplanned.some(u=>String(u.fe||'').trim().toUpperCase()==='E')?['Bei Platzmangel werden Leercontainer erst nach allen möglichen Vollcontainern eingeplant.']:[]),
       ...(plan.wagons.some(w=>w.units.some(u=>u.hazardous))?['Gefahrgut: höchstens ein Container mit Gefahrgutkennzeichnung je Wagen; UN-Nummern und weitere RID-Vorgaben vor Ort prüfen.']:[]),
@@ -195,6 +196,7 @@
       if(plan.planned+plan.unplanned.length!==plan.total)throw new Error('Zuordnungsfehler: Containermengen stimmen nicht überein.');
       if(plan.wagons.some(w=>w.units.some(u=>u.destination!==w.destination)))throw new Error('Interner Fehler: Zielbahnhöfe auf demselben Wagen vermischt.');
       if(plan.wagons.some(w=>w.units.filter(u=>window.NexoraPlannerEngine.isHazardous(u)).length>1))throw new Error('Interner Fehler: mehr als eine Gefahrguteinheit auf demselben Wagen.');
+      if(plan.wagons.some(w=>Number(w.axles)===2&&w.assignedGrossKg>20000))throw new Error('Interner Fehler: 2-Achser überschreitet 20.000 kg Container-Bruttogewicht.');
       latest={plan};render(plan,parsed.notes);
       showMessage(yardFile?`Entwurf berechnet. ${plan.yardMatches} von ${plan.total} Containern mit Yardposition; übrige COMMUNITY.`:
         `Entwurf berechnet. Alle Container haben zunächst Standort COMMUNITY. Yard-Abzug kann nachträglich ergänzt werden.`,'success');
@@ -270,7 +272,7 @@
     svg.push(txt(1110,33,'DIN A4  ·  QUERFORMAT  ·  1 SEITE',11,'#365d79',true,'text-anchor="end"'));
     svg.push(txt(1110,51,`${wagonCount} Wagen  |  ${plan.planned}/${plan.total} Container  |  ${plan.reverse?'REIHUNG GEDREHT':'MITVEAN-REIHUNG'}`,11,'#365d79',false,'text-anchor="end"'));
     svg.push(box(12,70,1116,29,'#fff2df','#e4ad65',1,3));
-    svg.push(txt(24,89,'PRÜFENTWURF · Keine Verladefreigabe: Verriegelungspositionen, Achslasten, Traglast und Kombinationen vor Ort prüfen.',12,'#834d1b',true));
+    svg.push(txt(24,89,'PRÜFENTWURF · 2-Achser max. 20 t Containerbrutto · Übrige Lastgrenzen, Verriegelung und Achslasten prüfen.',12,'#834d1b',true));
     let displayed=0;
     groups.forEach((group,rowIndex)=>{
       const y=rowStart+rowIndex*rowHeight;
@@ -352,7 +354,7 @@
     svg.push(txt(512,738,'MITTIG = mittige Einzelbeladung',10.5,'#2d5068',true));
     svg.push(txt(1112,738,`${plan.unplanned.length} nicht verplante Container`,10.5,plan.unplanned.length?'#b83b41':'#44657d',true,'text-anchor="end"'));
     svg.push(txt(26,756,'Wagenfolge: Von links nach rechts; nächste Zeile wieder links beginnen. Zugende liegt bei Position 100.',11,'#476780'));
-    svg.push(txt(26,771,'Nur schematische Lage auf dem Wagen – Verriegelungs- und Lastgrenzen nicht validiert. Nicht als Steck-/Verladefreigabe nutzen.',10.6,'#99571f',true));
+    svg.push(txt(26,771,'Nur schematische Lage auf dem Wagen – außer 2-Achs-Planungsgrenze keine Lastgrenzen validiert. Keine Verladefreigabe.',10.6,'#99571f',true));
     svg.push('</svg>');
     return svg.join('');
   }
@@ -368,12 +370,12 @@
 
   $('plannerDownload').addEventListener('click',()=>{
     if(!latest)return;
-    const rows=[['HINWEIS','WAGENFOLGE','WAG_NO','ACHSSEN','LUEP_DM','GLEIS_POSITION','ZIELBAHNHOF','CONTAINER','FT','YARD_POSITION','GROSS_KG','SCHEMATISCHER_VERSATZ_FT','WAGEN_LADUNG_KG','ANMERKUNG','GEFAHRGUT','UN_NUMMER']];
+    const rows=[['HINWEIS','WAGENFOLGE','WAG_NO','ACHSSEN','LUEP_DM','GLEIS_POSITION','ZIELBAHNHOF','CONTAINER','FT','YARD_POSITION','GROSS_KG','SCHEMATISCHER_VERSATZ_FT','WAGEN_LADUNG_KG','ANMERKUNG','GEFAHRGUT','UN_NUMMER','MAX_CONTAINERBRUTTO_KG']];
     for(const w of latest.plan.wagons){
-      if(!w.units.length)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),'','','','','','','0','Wagen nicht beladen','','']);
-      for(const u of w.units)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),w.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,u.offsetFt,w.assignedGrossKg,'NICHT ZUM VERLADEN FREIGEGEBEN',u.hazardous?'JA':'NEIN',u.unNo||'']);
+      if(!w.units.length)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),'','','','','','','0','Wagen nicht beladen','','',w.maxContainerGrossKg||'']);
+      for(const u of w.units)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),w.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,u.offsetFt,w.assignedGrossKg,'NICHT ZUM VERLADEN FREIGEGEBEN',u.hazardous?'JA':'NEIN',u.unNo||'',w.maxContainerGrossKg||'']);
     }
-    for(const u of latest.plan.unplanned)rows.push(['OFFEN','','','','','',u.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,'','',u.reason,u.hazardous?'JA':'NEIN',u.unNo||'']);
+    for(const u of latest.plan.unplanned)rows.push(['OFFEN','','','','','',u.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,'','',u.reason,u.hazardous?'JA':'NEIN',u.unNo||'','']);
     const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const a=document.createElement('a');a.href=url;a.download='NEXORA_TrainPlanner_PRUEFENTWURF.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);

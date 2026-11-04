@@ -118,3 +118,12 @@ Tests: `node --test tests/tfg-outbound-rules.test.js`.
 - CSV-Prüfexport: zusätzliche Spalten `GEFAHRGUT` und `UN_NUMMER`; die grafische und A4-Darstellung markiert UN-Einheiten.
 - Unverändert: Vollcontainer vor Leercontainern, Zielbahnhofreinheit, mittige Einzelladung, Reihungsumkehrung, Wagenzählung 1…, A4 Querformat.
 - Weiterhin **nur prüfpflichtiger Entwurf**; RID, Ladungssicherung, Sperr-/Trennvorschriften und tatsächliche Wagenspezifikationen werden nicht technisch geprüft.
+
+
+## v10 – 2-Achser: maximal 20 t Container-Bruttogewicht
+- **Verbindliche betriebliche Sicherheitsgrenze:** Auf Wagen mit **2 Achsen** darf die **Summe der Bruttogewichte aller verladenen Container höchstens 20.000 kg** betragen (Wagen-Eigengewicht ist nicht Bestandteil dieser Ladungssumme).
+- Die Gewichtsbeschränkung gilt für jede Belegungsphase: Vollcontainer, Leercontainer auf Restplätzen, erneute Optimierung und Vertauschung von ganzen Belegungen oder einzelnen Containern.
+- Bei 2-Achsern werden auch weiter entfernte, leichtere Containerkombinationen berücksichtigt; ist ein Container für 2-Achser zu schwer, wird ein geeigneter 4-/6-Achser bevorzugt, soweit die bestehenden Regeln das zulassen.
+- In der Zugansicht werden bei 2-Achsern **max. 20 t** und **max. 20.000 kg** kenntlich gemacht. Die A4-Übersicht nennt die Regel ebenfalls; im CSV-Prüfentwurf gibt es die zusätzliche Spalte `MAX_CONTAINERBRUTTO_KG`.
+- Für **4- und 6-achsige Wagen** wird hier ausdrücklich **kein** pauschaler Grenzwert erfunden: maßgebliche tatsächliche Lastgrenzen, Achslastverteilung und zugelassene Verriegelungskombinationen sind weiterhin fachlich zu prüfen. Der Entwurf ist keine Verladefreigabe.
+- Unverändert: Gefahrgut, Zieltrennung, Vollcontainer-Vorrang, Yard- und COMMUNITY-Priorität, Zugreihungsumkehr, A4-Druck, TFG-Export und andere Converter.

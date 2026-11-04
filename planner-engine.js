@@ -4,6 +4,10 @@
   'use strict';
   const calibrationMeters = 700; // Nutzerangabe: 700 m reichen ungefähr von Yardposition 1 bis 100.
   const fieldWidth = 99;
+  const twoAxleContainerGrossLimitKg = 20000; // Betriebliche Obergrenze: SUMME der Container-Bruttogewichte (ohne Wagen-Eigengewicht).
+  function maxContainerGrossKg(w) {return Number(w.axles)===2?twoAxleContainerGrossLimitKg:Infinity;}
+  function totalContainerGrossKg(units) {return units.reduce((sum,u)=>sum+Number(u.gross||0),0);}
+  function validWagonGross(w,units) {return totalContainerGrossKg(units)<=maxContainerGrossKg(w);}
   const stable = (a,b) => String(a).localeCompare(String(b),'de',{numeric:true});
   // TFG Excel: Leercontainer = L -> FE = E. Reeder is optional.
   // Never infer a HAPAG affiliation merely from a container prefix (e.g. HLBU).
@@ -115,7 +119,7 @@
   }
   function wagonLayout(wagons, reverse=false){
     const sorted=[...wagons].map(w=>({...w,capacityFt:classifyWagon(w),destination:null,
-      units:[],assignedFt:0,assignedGrossKg:0,centerRuleApplied:false})).sort((a,b)=>Number(a.lnr)-Number(b.lnr));
+      units:[],assignedFt:0,assignedGrossKg:0,maxContainerGrossKg:Number(w.axles)===2?twoAxleContainerGrossLimitKg:null,centerRuleApplied:false})).sort((a,b)=>Number(a.lnr)-Number(b.lnr));
     if(reverse)sorted.reverse();
     // Fortlaufende Anzeigeposition ab linkem Zuganfang – unabhängig von der
     // ursprünglichen MITVEAN-Laufnummer. Original-LNr bleibt zur Prüfung erhalten.
@@ -141,7 +145,7 @@
     return {units:ordered.map(u=>{const x={...u,offsetFt:cursor};cursor+=u.lengthFt;return x;}),centered};
   }
   function choosePack(w,remaining,variation,existing=[]){
-    if(!w.capacityFt || hazardCount(existing)>1)return null;
+    if(!w.capacityFt || hazardCount(existing)>1 || !validWagonGross(w,existing))return null;
     const canTakeHazard=hazardCount(existing)===0;
     const near=arr=>arr.sort((a,b)=>{
       const da=a.yardPosition===null?communityPenalty(a,w):Math.abs(a.yardPosition-w.positionCenter);
@@ -153,6 +157,35 @@
     const dangerous40=canTakeHazard?near(remaining.filter(u=>u.lengthFt===40 && isHazardous(u))):[];
     const dangerous20=canTakeHazard?near(remaining.filter(u=>u.lengthFt===20 && isHazardous(u))):[];
     let best=null;
+    // 2-Achser: Auch der beste 40-/20-Fuß-Mix darf mit bestehenden Containern
+    // insgesamt 20.000 kg Bruttogewicht nicht überschreiten. Bei der Auswahl
+    // nicht nur die nächstgelegenen Container prüfen: ein leichterer 20-Fuß-
+    // Container kann hinter einem zu schweren Kandidaten in der Liste stehen.
+    // Für einen 40-Fuß-Wagen sind höchstens zwei 20-Fuß-Einheiten möglich.
+    if(Number(w.axles)===2){
+      const candidate20=[...twenties,...dangerous20];
+      const candidate40=[...forties,...dangerous40];
+      function consider(selected){
+        const ft=selected.reduce((total,u)=>total+u.lengthFt,0);
+        if(!ft||ft>w.capacityFt||!validDangerousGoodsPack([...existing,...selected])||
+           !validWagonGross(w,[...existing,...selected]))return;
+        const yardCost=yardTravel(w,selected);
+        const preferenceCost=localityCost(w,selected);
+        const avg=preferenceCost/selected.length;
+        const n20=selected.filter(u=>u.lengthFt===20).length,n40=selected.length-n20;
+        const score=ft*12-(w.capacityFt-ft)*7-avg*(variation===2?2.0:1.0)
+          -yardCost*.15+(variation===1?n20*.25:n40*.25);
+        if(!best||score>best.score)best={selected,ft,score,travel:yardCost,
+          cost:preferenceCost,avg,util:ft/w.capacityFt};
+      }
+      for(const unit of candidate40)consider([unit]);
+      for(let i=0;i<candidate20.length;i++){
+        consider([candidate20[i]]);
+        if(w.capacityFt>=40)for(let j=i+1;j<candidate20.length;j++)
+          consider([candidate20[i],candidate20[j]]);
+      }
+      return best;
+    }
     // Consider packs with zero or exactly one hazard item. Using merely a
     // nearest-prefix slice could exclude a legal normal container behind two
     // nearby hazardous containers. Segregated pools avoid that failure.
@@ -182,6 +215,7 @@
   function travel(w, units) {return localityCost(w,units);}
   function assignUnits(w, units) {
     if(!validDangerousGoodsPack(units))throw new Error('Gefahrgutregel verletzt: mehr als eine UN-Einheit auf einem Wagen.');
+    if(!validWagonGross(w,units))throw new Error('Traglastgrenze verletzt: 2-Achser maximal 20.000 kg Container-Bruttogewicht.');
     const result=placements(units,w);
     w.units=result.units;
     w.destination=w.units.length?w.units[0].destination:null;
@@ -199,7 +233,8 @@
       for(let i=0;i<wagons.length;i++)for(let j=i+1;j<wagons.length;j++) {
         const a=wagons[i],b=wagons[j];
         if(!a.units.length||!b.units.length||
-           a.capacityFt<b.assignedFt||b.capacityFt<a.assignedFt)continue;
+           a.capacityFt<b.assignedFt||b.capacityFt<a.assignedFt||
+           !validWagonGross(a,b.units)||!validWagonGross(b,a.units))continue;
         const before=travel(a,a.units)+travel(b,b.units);
         const after=travel(a,b.units)+travel(b,a.units);
         if(after+0.00001<before) {
@@ -221,7 +256,8 @@
           if(after+0.00001<before) {
             const aUnits=[...a.units],bUnits=[...b.units];
             aUnits[ai]=bu;bUnits[bi]=au;
-            if(!validDangerousGoodsPack(aUnits)||!validDangerousGoodsPack(bUnits))continue;
+            if(!validDangerousGoodsPack(aUnits)||!validDangerousGoodsPack(bUnits)||
+               !validWagonGross(a,aUnits)||!validWagonGross(b,bUnits))continue;
             assignUnits(a,aUnits);assignUnits(b,bUnits);
             changed=true;
             break outer;
@@ -264,8 +300,12 @@
         group.units=group.units.filter(u=>!used.has(u.inputIndex));
         avail.splice(avail.indexOf(wagon),1);
       }
-      for(const u of group.units)unplanned.push({...u,
-        reason:isHazardous(u)?`${reason} · Gefahrgut: höchstens eine UN-Einheit je Wagen`:reason});
+      for(const u of group.units){
+        let detail=isHazardous(u)?`${reason} · Gefahrgut: höchstens eine UN-Einheit je Wagen`:reason;
+        if(u.gross>twoAxleContainerGrossLimitKg && wagons.some(w=>Number(w.axles)===2))
+          detail+=' · Einzelgewicht über 20.000 kg: für 2-Achser nicht zulässig';
+        unplanned.push({...u,reason:detail});
+      }
     }
     for(const group of fullWork){
       putOnFreeWagons(group,'Vollcontainer: kein verfügbarer passender Wagen / Stellplatz für diesen Zielbahnhof');
@@ -324,7 +364,8 @@
       yardWarnings:normalized.yardWarnings,unknownWagons:wagons.filter(w=>w.capacityFt===null),
       loadLimitsVerified:false,loadPositionsVerified:false};
   }
-  const engine={classifyWagon,parseYardLocation,normalizeYard,allocate,isEmptyHapag,parseHazard,isHazardous};
+  const engine={classifyWagon,parseYardLocation,normalizeYard,allocate,isEmptyHapag,parseHazard,isHazardous,
+    twoAxleContainerGrossLimitKg};
   root.NexoraPlannerEngine=engine;
   if(typeof module!=='undefined'&&module.exports)module.exports=engine;
 })(typeof window!=='undefined'?window:globalThis);
