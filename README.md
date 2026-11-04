@@ -109,3 +109,12 @@ Die Quelldateien und personenbezogene Daten sind nicht im Repository.
 Der TFG-Eingang, andere Converter und der Train Planner bleiben unverändert.
 
 Tests: `node --test tests/tfg-outbound-rules.test.js`.
+
+
+## v9 – Gefahrgut, Yard-C/D und COMMUNITY-Priorisierung
+- Gefahrgut in der TFG-Ausgangsladeliste aus der optionalen Spalte `Gefahrgut` bzw. einer `UN-Nummer` erkennen. Sobald ein Gefahrguthinweis vorliegt, darf **maximal ein** Gefahrgutcontainer auf einem Wagen stehen. Ein Nicht-Gefahrgutcontainer desselben Zielterminals darf die Restkapazität nutzen. Das gilt auch nach lokalen Tauschen/Neuoptimierung und bei gedrehter Wagenreihung. Gefährliche Kennzeichnungen ohne klare UN-Nummer erzeugen einen Prüfhilfe-Hinweis und werden vorsorglich als Gefahrgut behandelt.
+- Im Yard-Abzug bedeutet ein alleinstehendes `C` die angenäherte Gleisposition **15**, `D` die angenäherte Gleisposition **75**. Das gilt **für alle Container, auch Reefer**. Detaillierte numerische Yardpositionen bleiben unverändert.
+- `COMMUNITY` ohne konkrete Yardposition: Wagenmittelpunkt **bevorzugt 12–95** (weiche Optimierung mit Ausnahmen; Container werden nicht allein deshalb abgewiesen). Eventuelle Ausnahmebelegungen werden angezeigt.
+- CSV-Prüfexport: zusätzliche Spalten `GEFAHRGUT` und `UN_NUMMER`; die grafische und A4-Darstellung markiert UN-Einheiten.
+- Unverändert: Vollcontainer vor Leercontainern, Zielbahnhofreinheit, mittige Einzelladung, Reihungsumkehrung, Wagenzählung 1…, A4 Querformat.
+- Weiterhin **nur prüfpflichtiger Entwurf**; RID, Ladungssicherung, Sperr-/Trennvorschriften und tatsächliche Wagenspezifikationen werden nicht technisch geprüft.
