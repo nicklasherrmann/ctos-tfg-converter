@@ -8,6 +8,8 @@ function check(plan,units){
   for(const wagon of plan.wagons){
     assert(wagon.units.every(unit=>unit.destination===wagon.destination));
     assert(wagon.units.reduce((n,c)=>n+c.lengthFt,0)<=wagon.capacityFt);
+    if(Number(wagon.axles)===2)
+      assert(wagon.units.reduce((n,c)=>n+c.gross,0)<=20000,`2-Achser ${wagon.wagonNo} zu schwer`);
     for(const unit of wagon.units){
       assert(unit.offsetFt>=0&&unit.offsetFt+unit.lengthFt<=wagon.capacityFt);
     }
@@ -257,3 +259,76 @@ assert.equal(parseYardLocation('K 30 C 4').approximate,false);
   check(p,entries);
 }
 console.log('NEXORA v9: Gefahrgut- und Yard/COMMUNITY-Regressionsfälle bestanden.');
+
+// v10: Betriebsvorgabe für 2-Achser – insgesamt maximal 20.000 kg Containerbrutto.
+{
+  const units=[u('EQ20A','CTA',20,10000),u('EQ20B','CTA',20,10000)];
+  const plan=allocate([w(1,2,140)],units);
+  assert.equal(plan.planned,2);
+  assert.equal(plan.wagons[0].assignedGrossKg,20000);
+  assert.equal(plan.wagons[0].maxContainerGrossKg,20000);
+  check(plan,units);
+}
+// Bereits ein Kilogramm über der Grenze muss die zweite Einheit zurückstehen.
+{
+  const units=[u('OVER1','CTA',20,10001),u('OVER2','CTA',20,10000)];
+  const plan=allocate([w(1,2,140)],units);
+  assert.equal(plan.planned,1);
+  assert.equal(plan.unplanned.length,1);
+  check(plan,units);
+}
+// Ein zu schwerer Einzelcontainer darf NICHT auf einen 2-Achser, auch bei 40 Fuß.
+{
+  const units=[u('TOOHEAVY','CTA',40,20001)];
+  const plan=allocate([w(1,2,140)],units);
+  assert.equal(plan.planned,0);
+  assert.match(plan.unplanned[0].reason,/20\.000 kg/);
+  check(plan,units);
+}
+// Andere vorhandene Wagen nutzen: 22t wird zum 4-Achser umgeplant.
+{
+  const units=[u('22TON','CTA',40,22000)];
+  const wagons=[w(1,2,140),w(2,4,196)];
+  const plan=allocate(wagons,units,[{ctrNo:'22TON',location:'K 98 A 1'}]);
+  assert.equal(plan.planned,1);
+  assert.equal(plan.wagons.find(w=>w.units.length).axles,4);
+  check(plan,units);
+}
+// Schwere 20-Fuß-Kombination am Yard darf nicht die einzige geprüfte
+// Kombination sein: Zwei etwas weiter entfernte leichte Einheiten passen.
+{
+  const units=[u('HEAVY','CTA',20,19000),u('LIGHT1','CTA',20,9000),u('LIGHT2','CTA',20,9000)];
+  const plan=allocate([w(1,2,140)],units,[
+    {ctrNo:'HEAVY',location:'K 99 A 1'},
+    {ctrNo:'LIGHT1',location:'K 60 A 1'},
+    {ctrNo:'LIGHT2',location:'K 58 A 1'}]);
+  assert.equal(plan.planned,2);
+  assert.deepEqual(plan.wagons[0].units.map(u=>u.ctrNo).sort(),['LIGHT1','LIGHT2']);
+  check(plan,units);
+}
+// Restplätze: nach einem vollen 12-t-20-Fuß-Container darf ein leerer
+// 9-t-Container NICHT hinzu; ein 8-t-Container ist dagegen erlaubt.
+{
+  const units=[{...u('FULL12','CTA',20,12000),fe:'F'},
+    {...u('EMPTY9','CTA',20,9000),fe:'E'},
+    {...u('EMPTY8','CTA',20,8000),fe:'E'}];
+  const plan=allocate([w(1,2,140)],units);
+  assert.equal(plan.plannedFull,1);
+  assert.equal(plan.plannedEmpty,1);
+  assert.deepEqual(plan.wagons[0].units.map(u=>u.ctrNo).sort(),['EMPTY8','FULL12']);
+  check(plan,units);
+}
+// Beim nachträglichen Tausch dürfen keine Überladungen entstehen.
+// Beides zusammen mit Gefahrgut und gedrehter Wagenreihung.
+{
+  const units=[{...u('UN20','CTA',20,11000),fe:'F',hazardRaw:'UN 1203'},
+    {...u('NON20','CTA',20,9000),fe:'F'},
+    {...u('HEAVY40','CTA',40,29000),fe:'F'}];
+  const plan=allocate([w(1,2,140),w(2,4,196)],units,[],{reverse:true});
+  assert.equal(plan.planned,3);
+  assert(plan.wagons.find(w=>w.axles===2).assignedGrossKg<=20000);
+  assert(plan.wagons.find(w=>w.axles===4).assignedGrossKg>=29000);
+  assert.deepEqual(plan.wagons.map(w=>w.displaySeq),[1,2]);
+  check(plan,units);
+}
+console.log('NEXORA v10: 2-Achser-Bruttogewichtsgrenze bestanden.');
