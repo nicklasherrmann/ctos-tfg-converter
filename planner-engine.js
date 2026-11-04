@@ -12,6 +12,36 @@
     const owner = String(unit?.carrier || unit?.shipper || '').trim().toUpperCase();
     return /HAPAG[\s-]*LLOYD|\bHAPAG\b/.test(owner);
   }
+  // UN number from the "Gefahrgut" column of the TFG Ladeliste.
+  // Treat clearly affirmative hazard indications as hazardous even if a
+  // well-formed four-digit UN number is missing; never silently co-load them.
+  function parseHazard(value) {
+    const raw=String(value??'').trim();
+    const normalized=raw.toUpperCase().replace(/\s+/g,' ');
+    if(!normalized || /^(?:N|NEIN|NO|NONE|KEIN|KEINE|FALSE|0|\-|\.)$/.test(normalized))
+      return {hazardous:false,unNo:'',hazardRaw:raw,requiresReview:false};
+    const match=normalized.match(/(?:\bUN[\s:./-]*)?(?<!\d)(\d{4})(?!\d)/);
+    return {hazardous:true,unNo:match?match[1]:'',hazardRaw:raw,requiresReview:!match};
+  }
+  function isHazardous(unit) {
+    if(unit?.hazardous===true)return true;
+    if(unit?.hazardous===false)return false;
+    return parseHazard(unit?.unNo ?? unit?.hazardRaw ?? unit?.dangerousGoods ?? unit?.hazard ?? '').hazardous;
+  }
+  function hazardCount(units){return units.reduce((n,u)=>n+(isHazardous(u)?1:0),0);}
+  function validDangerousGoodsPack(units){return hazardCount(units)<=1;}
+  const communityMin=12, communityMax=95;
+  function communityPenalty(u,w) {
+    if(u.yardSource!=='COMMUNITY')return 0;
+    const p=w.positionCenter;
+    return p<communityMin?12+(communityMin-p)*2 : p>communityMax?12+(p-communityMax)*2 : 0;
+  }
+  function yardTravel(w,units) {
+    return units.reduce((total,u)=>total+(u.yardPosition===null?0:Math.abs(u.yardPosition-w.positionCenter)),0);
+  }
+  function localityCost(w,units) {
+    return yardTravel(w,units)+units.reduce((sum,u)=>sum+communityPenalty(u,w),0);
+  }
   function classifyWagon(w) {
     const ax=Number(w.axles), lup=Number(w.lup); // LüP aus MITVEAN in Dezimetern
     if (ax===2 && lup>=137 && lup<=142) return 40;
@@ -22,12 +52,18 @@
   }
   function parseYardLocation(value) {
     const raw=String(value??'').trim().replace(/\s+/g,' ');
+    // Der Terminal-Yard-Abzug führt C und D als reine Bereichskennzeichen.
+    // Es gibt dort keine genaue Einzelposition: nutze einen Planungs-Mittelwert.
+    if (/^[CD]$/i.test(raw)) {
+      const zone=raw.toUpperCase(),position=zone==='C'?15:75;
+      return {raw:zone,valid:true,zone,position,row:null,level:null,approximate:true};
+    }
     // Bsp. "K 30 C 4", "A 15 B 1", "D2H 99 D 2"; kein Ableiten aus Rail-Out/Sondercode.
     const match=raw.match(/^([A-Z][A-Z0-9]{0,4})\s+(\d{1,3})\s+([A-Z])\s+([1-9]\d?)$/i);
     if (!match) return {raw,valid:false,position:null,level:null};
     const position=Number(match[2]),level=Number(match[4]);
     if (position<1||position>100||level>9) return {raw,valid:false,position:null,level:null};
-    return {raw,valid:true,zone:match[1].toUpperCase(),position,row:match[3].toUpperCase(),level};
+    return {raw,valid:true,zone:match[1].toUpperCase(),position,row:match[3].toUpperCase(),level,approximate:false};
   }
   function normalizeYard(rows) {
     const byCtr=new Map(), warnings=[], duplicates=new Set();
@@ -55,10 +91,14 @@
       const yardPosition=yard?.valid?yard.position:null;
       if(yardPosition!==null) yardMatches++;
       else if(yard) unknownMatches++;
+      const danger=parseHazard(e.unNo || e.hazardRaw || e.dangerousGoods || e.hazard || '');
       const unit={...e,inputIndex:i,ctrNo,destination,destinationRaw,lengthFt,
+        hazardous:e.hazardous===true||danger.hazardous,
+        unNo:e.unNo||danger.unNo,hazardRaw:e.hazardRaw||danger.hazardRaw,
+        hazardReview:danger.requiresReview,
         gross:Number.isFinite(gross)&&gross>0?gross:null,
         yardLocation:yard?.valid?yard.raw:'COMMUNITY',yardPosition,
-        yardLevel:yard?.valid?yard.level:null,
+        yardLevel:yard?.valid?yard.level:null,yardApproximate:!!yard?.approximate,
         yardSource:yard?.valid?'YARD':(yard?'NICHT_ZUORDENBAR':'COMMUNITY')};
       let reason='';
       if(!ctrNo) reason='Containernummer fehlt';
@@ -100,37 +140,48 @@
     let cursor=(w.capacityFt-total)/2;
     return {units:ordered.map(u=>{const x={...u,offsetFt:cursor};cursor+=u.lengthFt;return x;}),centered};
   }
-  function choosePack(w,remaining,variation){
-    if(!w.capacityFt)return null;
+  function choosePack(w,remaining,variation,existing=[]){
+    if(!w.capacityFt || hazardCount(existing)>1)return null;
+    const canTakeHazard=hazardCount(existing)===0;
     const near=arr=>arr.sort((a,b)=>{
-      const da=a.yardPosition===null?60:Math.abs(a.yardPosition-w.positionCenter);
-      const db=b.yardPosition===null?60:Math.abs(b.yardPosition-w.positionCenter);
+      const da=a.yardPosition===null?communityPenalty(a,w):Math.abs(a.yardPosition-w.positionCenter);
+      const db=b.yardPosition===null?communityPenalty(b,w):Math.abs(b.yardPosition-w.positionCenter);
       return da-db || a.inputIndex-b.inputIndex;
     });
-    const twenties=near(remaining.filter(u=>u.lengthFt===20));
-    const forties=near(remaining.filter(u=>u.lengthFt===40));
+    const forties=near(remaining.filter(u=>u.lengthFt===40 && !isHazardous(u)));
+    const twenties=near(remaining.filter(u=>u.lengthFt===20 && !isHazardous(u)));
+    const dangerous40=canTakeHazard?near(remaining.filter(u=>u.lengthFt===40 && isHazardous(u))):[];
+    const dangerous20=canTakeHazard?near(remaining.filter(u=>u.lengthFt===20 && isHazardous(u))):[];
     let best=null;
-    for(let n40=0;n40<=Math.min(2,forties.length,Math.floor(w.capacityFt/40));n40++){
-      for(let n20=0;n20<=Math.min(4,twenties.length,Math.floor((w.capacityFt-40*n40)/20));n20++){
-        const ft=n40*40+n20*20;if(!ft)continue;
-        const selected=[...forties.slice(0,n40),...twenties.slice(0,n20)];
-        const known=selected.filter(u=>u.yardPosition!==null);
-        const travel=known.reduce((s,u)=>s+Math.abs(u.yardPosition-w.positionCenter),0);
-        const avg=known.length?travel/known.length:0;
-        // Hauptziel: vollständige Auslastung / wenig verschenkten Wagenplatz;
-        // bei vergleichbarer Auslastung die Nähe zum Yard maximieren.
-        const util=ft/w.capacityFt;
-        const score=ft*12 - (w.capacityFt-ft)*7 - avg*(variation===2?2.0:1.0)
-          - (known.length?travel*.15:0) + (variation===1?n20*.25:n40*.25);
-        if(!best||score>best.score)best={selected,ft,score,travel,avg,util};
+    // Consider packs with zero or exactly one hazard item. Using merely a
+    // nearest-prefix slice could exclude a legal normal container behind two
+    // nearby hazardous containers. Segregated pools avoid that failure.
+    const modes=[null,...(dangerous40.length?['40']:[]),...(dangerous20.length?['20']:[])];
+    for(const hazType of modes){
+      const selectedHazard=hazType==='40'?dangerous40[0]:hazType==='20'?dangerous20[0]:null;
+      for(let n40=0;n40<=Math.min(2,forties.length+(hazType==='40'?1:0),Math.floor(w.capacityFt/40));n40++){
+        for(let n20=0;n20<=Math.min(4,twenties.length+(hazType==='20'?1:0),Math.floor((w.capacityFt-40*n40)/20));n20++){
+          const ft=n40*40+n20*20;if(!ft)continue;
+          const normal40=n40-(hazType==='40'?1:0),normal20=n20-(hazType==='20'?1:0);
+          if(normal40<0||normal20<0||normal40>forties.length||normal20>twenties.length)continue;
+          const selected=[...forties.slice(0,normal40),...twenties.slice(0,normal20)];
+          if(selectedHazard)selected.push(selectedHazard);
+          if(!validDangerousGoodsPack([...existing,...selected]))continue;
+          const yardCost=yardTravel(w,selected);
+          const preferenceCost=localityCost(w,selected);
+          const avg=selected.length?preferenceCost/selected.length:0;
+          const score=ft*12 - (w.capacityFt-ft)*7 - avg*(variation===2?2.0:1.0)
+            - yardCost*.15 + (variation===1?n20*.25:n40*.25);
+          if(!best||score>best.score)best={selected,ft,score,travel:yardCost,
+            cost:preferenceCost,avg,util:ft/w.capacityFt};
+        }
       }
     }
     return best;
   }
-  function travel(w, units) {
-    return units.reduce((sum,u)=>sum+(u.yardPosition===null?0:Math.abs(u.yardPosition-w.positionCenter)),0);
-  }
+  function travel(w, units) {return localityCost(w,units);}
   function assignUnits(w, units) {
+    if(!validDangerousGoodsPack(units))throw new Error('Gefahrgutregel verletzt: mehr als eine UN-Einheit auf einem Wagen.');
     const result=placements(units,w);
     w.units=result.units;
     w.destination=w.units.length?w.units[0].destination:null;
@@ -170,6 +221,7 @@
           if(after+0.00001<before) {
             const aUnits=[...a.units],bUnits=[...b.units];
             aUnits[ai]=bu;bUnits[bi]=au;
+            if(!validDangerousGoodsPack(aUnits)||!validDangerousGoodsPack(bUnits))continue;
             assignUnits(a,aUnits);assignUnits(b,bUnits);
             changed=true;
             break outer;
@@ -212,7 +264,8 @@
         group.units=group.units.filter(u=>!used.has(u.inputIndex));
         avail.splice(avail.indexOf(wagon),1);
       }
-      for(const u of group.units)unplanned.push({...u,reason});
+      for(const u of group.units)unplanned.push({...u,
+        reason:isHazardous(u)?`${reason} · Gefahrgut: höchstens eine UN-Einheit je Wagen`:reason});
     }
     for(const group of fullWork){
       putOnFreeWagons(group,'Vollcontainer: kein verfügbarer passender Wagen / Stellplatz für diesen Zielbahnhof');
@@ -225,7 +278,7 @@
         if(!w.units.length || w.destination!==group.destination)continue;
         const remainingFt=w.capacityFt-w.assignedFt;
         if(remainingFt<20)continue;
-        const pack=choosePack({...w,capacityFt:remainingFt},group.units,mode);
+        const pack=choosePack({...w,capacityFt:remainingFt},group.units,mode,w.units);
         if(!pack)continue;
         assignUnits(w,[...w.units,...pack.selected]);
         const used=new Set(pack.selected.map(u=>u.inputIndex));
@@ -239,11 +292,13 @@
     const planned=wagons.reduce((s,w)=>s+w.units.length,0);
     const plannedFull=wagons.reduce((s,w)=>s+w.units.filter(u=>String(u.fe||'').trim().toUpperCase()!=='E').length,0);
     const plannedEmpty=planned-plannedFull;
-    const totalDistance=wagons.reduce((s,w)=>s+w.units.reduce((acc,u)=>acc+
-      (u.yardPosition===null?0:Math.abs(u.yardPosition-w.positionCenter)),0),0);
+    const totalDistance=wagons.reduce((s,w)=>s+yardTravel(w,w.units),0);
+    const preferenceCost=wagons.reduce((s,w)=>s+localityCost(w,w.units),0);
+    const communityExceptions=wagons.reduce((s,w)=>s+w.units.filter(u=>
+      u.yardSource==='COMMUNITY'&&(w.positionCenter<communityMin||w.positionCenter>communityMax)).length,0);
     const yardPlanned=wagons.reduce((s,w)=>s+w.units.filter(u=>u.yardPosition!==null).length,0);
     const unusedSpace=wagons.reduce((s,w)=>s+(w.units.length?(w.capacityFt-w.assignedFt):0),0);
-    return {wagons,unplanned,planned,plannedFull,plannedEmpty,totalDistance,yardPlanned,unusedSpace};
+    return {wagons,unplanned,planned,plannedFull,plannedEmpty,totalDistance,preferenceCost,communityExceptions,yardPlanned,unusedSpace};
   }
   function allocate(wagonInput, entriesInput, yardInput=[], options={}){
     const reverse=Boolean(options && options.reverse);
@@ -252,7 +307,7 @@
     const attempts=[0,1,2].map(m=>simulate(layout,normalized.groups,m));
     // Die Priorität der Vollcontainer schlägt die Gesamtanzahl und die Yardnähe.
     attempts.sort((a,b)=>b.plannedFull-a.plannedFull || b.planned-a.planned ||
-      a.unusedSpace-b.unusedSpace || a.totalDistance-b.totalDistance);
+      a.unusedSpace-b.unusedSpace || a.preferenceCost-b.preferenceCost);
     const best=attempts[0];
     const unplanned=[...normalized.unplanned,...best.unplanned];
     const wagons=best.wagons;
@@ -263,12 +318,13 @@
       capacityFt:wagons.reduce((s,w)=>s+(w.capacityFt||0),0),
       usedFt:wagons.reduce((s,w)=>s+(w.assignedFt||0),0),
       totalMeters:layout.totalMeters,estimatedTravelPositions:best.totalDistance,
+      communityExceptions:best.communityExceptions,
       yardPlanned:best.yardPlanned,yardMatches:normalized.yardMatches,
       yardEntries:normalized.yardEntries,unknownMatches:normalized.unknownMatches,
       yardWarnings:normalized.yardWarnings,unknownWagons:wagons.filter(w=>w.capacityFt===null),
       loadLimitsVerified:false,loadPositionsVerified:false};
   }
-  const engine={classifyWagon,parseYardLocation,normalizeYard,allocate,isEmptyHapag};
+  const engine={classifyWagon,parseYardLocation,normalizeYard,allocate,isEmptyHapag,parseHazard,isHazardous};
   root.NexoraPlannerEngine=engine;
   if(typeof module!=='undefined'&&module.exports)module.exports=engine;
 })(typeof window!=='undefined'?window:globalThis);
