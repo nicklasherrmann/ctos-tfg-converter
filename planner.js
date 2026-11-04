@@ -25,7 +25,8 @@
     <div id="plannerOutput" class="hidden">
       <div id="plannerMetrics" class="planner-metrics"></div>
       <div class="planner-output-head"><div><h4>Grafischer Zug · Wagenfolge</h4><p>Alle Containerdaten direkt sichtbar. Schematische Positionen, nicht maßstabsgetreue Verriegelung.</p></div>
-      <div class="planner-export-actions"><button id="plannerPrint" class="primary-btn" type="button" title="Gesamten Zug auf einer DIN-A4-Seite im Querformat drucken oder als PDF speichern">Steckübersicht drucken · DIN A4</button><button id="plannerDownload" class="ghost-btn" type="button">Planungsentwurf als CSV ↓</button></div></div>
+      <div class="planner-export-actions"><button id="plannerPrint" class="primary-btn" type="button" title="Gesamten Zug auf einer DIN-A4-Seite im Querformat drucken oder als PDF speichern">Steckübersicht drucken · DIN A4</button><button id="plannerCoparn" class="ghost-btn" type="button" title="Experimentelle TFG-COPARN mit Plan Wagon No und Plan Loc als XLSX herunterladen – nicht für produktiven TOPS-Import freigegeben">COPARN mit Ladeplan (Test) ↓</button><button id="plannerDownload" class="ghost-btn" type="button">Planungsentwurf als CSV ↓</button></div></div>
+      <p class="planner-coparn-notice"><strong>Experimenteller COPARN-Export:</strong> Die zusätzlichen Felder „Plan Wagon No“ und „Plan Loc“ sind noch nicht für TOPS/TopO/TOPX verifiziert. „Plan Loc“ verwendet eine schematische NEXORA-Fußposition, keinen bestätigten TOPX-Stellplatzcode. <strong>Nicht ungeprüft produktiv einspielen.</strong></p>
       <div id="plannerWarnings"></div>
       <div class="planner-legend planner-legend-v2"><span><i class="planner-legend-red"></i> Container</span><span><i class="planner-legend-green"></i> Leere HAPAG-Container</span><span>⚠ UN = Gefahrgut</span><span>Yard C ≈ 15 · D ≈ 75 · COMMUNITY bevorzugt 12–95</span><span>Gleisposition 1–100 · Zugende bei 100</span></div>
       <section class="planner-train-panel" aria-label="Horizontaler Zugladeplan">
@@ -366,6 +367,35 @@
     if(!latest?.plan){showMessage('Erst die Verplanung berechnen, dann den Ladeplan drucken.');return;}
     printSheet.innerHTML=buildPrintSvg(latest.plan);
     window.print();
+  });
+
+  $('plannerCoparn').addEventListener('click',()=>{
+    if(!latest?.plan||!parsed?.listData){
+      showMessage('Bitte zuerst die Verplanung berechnen.');return;
+    }
+    try{
+      // Exakt die bestehende TFG-Ausgangs-COPARN als Grundlage nutzen.
+      // Nur die zwei Planungsfelder werden angehaengt, keine anderen
+      // TFG-Exportwerte oder Konverter-Regeln veraendert.
+      const trial=window.NexoraPlannerCoparn.build(latest.plan,parsed.listData,OUT_HEADERS,makeOutboundRows);
+      const ws=XLSX.utils.aoa_to_sheet([trial.headers,...trial.rows],{cellDates:false});
+      const plannedWagonCol=trial.headers.length-2;
+      const planLocCol=trial.headers.length-1;
+      for(let i=0;i<trial.rows.length;i++){
+        const row=i+2;
+        const ctr=ws['C'+row];if(ctr)ctr.t='s';
+        const wagon=ws[XLSX.utils.encode_cell({r:row-1,c:plannedWagonCol})];if(wagon)wagon.t='s';
+        const loc=ws[XLSX.utils.encode_cell({r:row-1,c:planLocCol})];if(loc)loc.t='s';
+        const etd=ws['B'+row];if(etd){etd.t='n';etd.z='dd.mm.yyyy hh:mm';}
+      }
+      ws['!cols']=trial.headers.map((h,i)=>({wch:i===1?19:i===2?17:i===plannedWagonCol?19:i===planLocCol?29:Math.min(Math.max(h.length+2,10),24)}));
+      ws['!autofilter']={ref:`A1:${XLSX.utils.encode_col(trial.headers.length-1)}${trial.rows.length+1}`};
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,OUT_SHEET_NAME);
+      const stamp=(trial.date||'OHNE-DATUM').replace(/[^0-9.\-]/g,'');
+      XLSX.writeFile(wb,`NEXORA_TEST_COPARN_MIT_LADEPLAN_${stamp}${trial.reverse?'_GEDREHT':''}_NICHT_EINSPIELEN.xlsx`,{bookType:'xlsx',compression:true});
+      showMessage(`COPARN-Testdatei erstellt: ${trial.planned} verplante Container, ${trial.unplanned} ohne Zuordnung. Plan Loc ist noch kein bestaetigter TOPX-Code. Nicht produktiv einspielen.`,'success');
+    }catch(err){console.error(err);showMessage(err?.message||'COPARN-Testdatei konnte nicht erstellt werden.');}
   });
 
   $('plannerDownload').addEventListener('click',()=>{
