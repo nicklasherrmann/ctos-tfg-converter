@@ -149,3 +149,27 @@ Tests: `node --test tests/tfg-outbound-rules.test.js`.
 ## v12 – experimentelle TFG-COPARN aus dem Train Planner
 
 Nach erfolgter Wagen-/Containerverplanung bietet der Train Planner den Button **COPARN mit Ladeplan (Test)** neben der A4-Druckfunktion. Die XLSX-Datei verwendet das bestehende, unveraenderte 63-spaltige TFG-COPARN-Layout auf dem Tabellenblatt `COPARN-Export-Example-RBS` und haengt **genau zwei** Testfelder an: `Plan Wagon No` und `Plan Loc`. Die Zeilen folgen der aktuell angezeigten Wagenfolge und der schematischen Position links nach rechts (auch bei umgekehrter Wagenreihung). Vollstaendig verplante Container erhalten ihre echte Wagennummer. Nicht verplante Container bleiben enthalten, haben aber leere Planfelder. **`Plan Loc` enthaelt absichtlich das NEXORA-interne Testformat `NEXORA:10-50FT:MITTIG` oder `NEXORA:0-20FT`**; es ist *kein* bestaetigter TOPX-Code. Der Dateiname enthaelt `TEST` und `NICHT_EINSPIELEN`. Diese Datei darf nicht ohne ausdrueckliche Bestaetigung durch RBS/TOPS in den produktiven Import eingestellt werden. Die eigentlichen NEXORA-Planungs- und TFG-Ausgangsregeln bleiben unveraendert.
+
+## v13 – TOPX-ähnliche Stellplatzcodierung für COPARN-Testexport
+
+- Im Train Planner vor dem **COPARN-Testdownload** eine **reale TOPX-Gleisnummer**
+  eingeben (z. B. `411`, `413`). Ohne gültige Gleisnummer findet kein Export statt.
+- Die bisherigen **63 TFG-COPARN-Spalten** bleiben in Inhalt und Reihenfolge
+  unverändert. Nur `Plan Wagon No` und `Plan Loc` folgen als Spalten 64/65.
+- `Plan Wagon No`: echte vollständige Wagennummer aus MITVEAN, **als Text**.
+- `Plan Loc`: aus TOPX-Screenshots abgeleitete Zeichenfolge `R <Gleis> <Wagenfolge> <Anfangsplatz> [M] 1`.
+  Beispiel `R 413 35 03 1` für Wagenfolge 35, Beginn Stellplatz 03 auf Gleis 413;
+  `R 411 06 01 M 1` für mittige Einzelbelegung auf Wagen 6.
+- Die **Wagenfolge** ist die links beginnende, 1-basierte physische Folge des
+  berechneten Plans, auch bei gedrehter Wagenreihung. Ein 20-ft-Container
+  belegt einen Anfangsplatz, ein 40-ft-Container zwei Plätze; bei zwei 40-ft-
+  Containern sind die Anfangsplätze daher `01` und `03`.
+- Der Planer entscheidet nur schematisch über die Ladeeinheiten. Die tatsächliche
+  RBS-TOPX-Verriegelungs-/Slot-Geometrie und die Übernahme dieser Zeichenfolge
+  über **TOPS/TOPO-COPARN sind nicht bestätigt**. Diese Datei ist nur für eine
+  freigegebene IT/RBS-Testumgebung bestimmt; keinesfalls ungeprüft auf einen
+  produktiven Zug importieren. Der Dateiname trägt `TEST` und `NICHT_EINSPIELEN`.
+- Mehrere Container auf einem Wagen werden anhand ihrer schematischen Positionen
+  links nach rechts kodiert; überlappende Einheiten werden abgewiesen.
+  Nicht verplante Container behalten leere Planfelder. A4-Druck, Train-Planner-
+  Algorithmus und sämtliche übrigen Converter bleiben unverändert.
