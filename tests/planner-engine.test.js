@@ -135,3 +135,125 @@ assert.equal(isEmptyHapag({fe:'E',ctrNo:'HLBU9999999'}),false);
     assert.ok(Math.abs(p.wagons.at(-1).positionEnd-100)<1e-9);
   }
 }
+
+// v9: Gefahrgut (UN-Nummer) aus optionaler TFG-Spalte, inklusive Text-/Zahlvarianten.
+const {parseHazard,isHazardous}=require('../planner-engine.js');
+assert.deepEqual(parseHazard('N'),{hazardous:false,unNo:'',hazardRaw:'N',requiresReview:false});
+assert.equal(parseHazard('UN 1203').unNo,'1203');
+assert.equal(parseHazard(1993).hazardous,true);
+assert.equal(parseHazard('UN-1993').unNo,'1993');
+assert.equal(parseHazard('J').requiresReview,true);
+assert.equal(isHazardous({hazardRaw:'UN 1203'}),true);
+assert.equal(isHazardous({hazardRaw:'N'}),false);
+// Alle Gefahreinheiten dürfen nur mit normalen Einheiten desselben Ziels kombiniert werden.
+{
+  const entries=[
+    {...u('HAZ1','CTA',20),fe:'F',hazardRaw:'UN 1203'},
+    {...u('HAZ2','CTA',20),fe:'F',hazardRaw:'1993'},
+    {...u('NORMAL','CTA',20),fe:'F',hazardRaw:'N'}
+  ];
+  const p=allocate([w(1,4,196)],entries);
+  assert.equal(p.planned,2);
+  assert.equal(p.unplanned.length,1);
+  assert.equal(p.wagons[0].units.filter(isHazardous).length,1);
+  assert(p.wagons[0].units.some(c=>c.ctrNo==='NORMAL'));
+  check(p,entries);
+}
+// Gefahrgut darf nicht als Restplatz zu einem bereits mit Gefahrgut belegten
+// Vollcontainer-Wagen hinzugefügt werden; ein anderer normaler Leercontainer schon.
+{
+  const entries=[
+    {...u('HAZF','CTA',40),fe:'F',hazardRaw:'UN 1203'},
+    {...u('HAZE','CTA',20),fe:'E',hazardRaw:'UN 1993'},
+    {...u('NORMAL_E','CTA',20),fe:'E',hazardRaw:'N'}
+  ];
+  const p=allocate([w(1,4,196)],entries);
+  assert.equal(p.plannedFull,1);
+  assert.equal(p.plannedEmpty,1);
+  assert.equal(p.unplanned.length,1);
+  assert.equal(p.unplanned[0].ctrNo,'HAZE');
+  assert.equal(p.wagons[0].units.filter(isHazardous).length,1);
+  check(p,entries);
+}
+// Auch auf 80-Fuß-Wagen dürfen die zwei nächsten UN-Einheiten nicht
+// gemeinsam landen, wohl aber ein UN-Container mit weiteren normalen 20-Fuß.
+{
+  const entries=[
+    {...u('UN1','CTA',20),fe:'F',hazardRaw:'UN 1203'},
+    {...u('UN2','CTA',20),fe:'F',hazardRaw:'UN 1993'},
+    {...u('REG1','CTA',20),fe:'F'},
+    {...u('REG2','CTA',20),fe:'F'}
+  ];
+  const p=allocate([w(1,6,267)],entries);
+  assert.equal(p.planned,3);
+  assert.equal(p.wagons[0].units.filter(isHazardous).length,1);
+  check(p,entries);
+}
+// Zielbahnhof, Vollcontainer-Vorrang, Gefahrgut und gedrehte Reihung zugleich.
+{
+  const entries=[
+    {...u('D1','CTA',40),fe:'F',hazardRaw:'UN 1203'},
+    {...u('D2','CTA',40),fe:'F',hazardRaw:'UN 1993'},
+    {...u('E','BK',40),fe:'E'}
+  ];
+  const p=allocate([w(1,2,140),w(2,2,140)],entries,[],{reverse:true});
+  assert.equal(p.plannedFull,2);
+  assert.equal(p.plannedEmpty,0);
+  assert.equal(p.unplanned[0].ctrNo,'E');
+  assert.deepEqual(p.wagons.map(x=>x.displaySeq),[1,2]);
+  check(p,entries);
+}
+// C/D sind tatsächlich eigenständige Yard-Standorte ohne Unterteilung.
+assert.equal(parseYardLocation(' C ').position,15);
+assert.equal(parseYardLocation('c').approximate,true);
+assert.equal(parseYardLocation('D').position,75);
+assert.equal(parseYardLocation(' d ').zone,'D');
+assert.equal(parseYardLocation('CFS').valid,false);
+assert.equal(parseYardLocation('K 30 C 4').position,30);
+assert.equal(parseYardLocation('K 30 C 4').approximate,false);
+// C nahe 15 / D nahe 75; Reefer bleiben identisch.
+{
+  const wagons=Array.from({length:34},(_,i)=>w(i+1,4,196));
+  const entries=[
+    {...u('YC','CTA',40),fe:'F',type:'RF'},
+    {...u('YD','CTA',40),fe:'F',type:'DC'}
+  ];
+  const p=allocate(wagons,entries,[{ctrNo:'YC',location:'C'},{ctrNo:'YD',location:'D'}]);
+  const c=p.wagons.find(x=>x.units.some(u=>u.ctrNo==='YC'));
+  const d=p.wagons.find(x=>x.units.some(u=>u.ctrNo==='YD'));
+  assert(c&&d);
+  assert(Math.abs(c.positionCenter-15)<6);
+  assert(Math.abs(d.positionCenter-75)<6);
+  assert.equal(p.yardMatches,2);
+  assert.equal(c.units[0].yardApproximate,true);
+  check(p,entries);
+}
+// COMMUNITY vorzugsweise 12..95; außerhalb möglich, wenn es keine Alternative gibt.
+{
+  const wagons=Array.from({length:34},(_,i)=>w(i+1,4,196));
+  const entries=[{...u('COM','CTA',40),fe:'F'}];
+  const p=allocate(wagons,entries);
+  const wagon=p.wagons.find(w=>w.units.length);
+  assert(wagon.positionCenter>=12&&wagon.positionCenter<=95);
+  assert.equal(p.communityExceptions,0);
+  check(p,entries);
+}
+{
+  const entries=[{...u('COM','CTA',40),fe:'F'}];
+  const p=allocate([w(1,2,140)],entries);
+  assert.equal(p.planned,1);
+  assert(p.wagons[0].positionCenter>95);
+  assert.equal(p.communityExceptions,1);
+  check(p,entries);
+}
+// COMMUNITY darf die harten Gefahrgut- und Ziel-Regeln nicht überstimmen.
+{
+  const entries=[{...u('H1','CTA',20),hazardRaw:'UN 1203'},
+    {...u('H2','CTA',20),hazardRaw:'UN 1993'},
+    {...u('COM2','CTA',20)}];
+  const p=allocate([w(1,4,196)],entries);
+  assert.equal(p.planned,2);
+  assert.equal(p.wagons[0].units.filter(isHazardous).length,1);
+  check(p,entries);
+}
+console.log('NEXORA v9: Gefahrgut- und Yard/COMMUNITY-Regressionsfälle bestanden.');
