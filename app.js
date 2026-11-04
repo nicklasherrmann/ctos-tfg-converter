@@ -899,6 +899,7 @@ function parseHellmannSecondPart(bytes) {
     const find = test => headers.findIndex(test);
     const candidate = {
       ctr: find(h => h.includes("lecontainer") && h.includes("prefix")),
+      seq: find(h => h === "lfdnr" || h === "lfdnummer"),
       bl: find(h => h === "bl"),
       tara: find(h => h.includes("tara")),
       load: find(h => h.includes("ladgew")),
@@ -933,13 +934,22 @@ function parseHellmannSecondPart(bytes) {
   for (let r = headerRow + 1; r < matrix.length; r++) {
     const row = matrix[r] || [];
     const ctrNo = clean(row[idx.ctr]).toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) continue;
-
     const wagonNo = clean(row[idx.wagon]).replace(/\D/g, "");
+
+    // Der Wageneintrag kann auch ohne Ladeeinheit vorhanden sein. Diesen
+    // physischen Wagen in Quellreihenfolge mitführen (auch komplett leer).
     if (!/^\d{12}$/.test(wagonNo)) {
-      warnings.push("Zeile " + (r + 1) + ": Wagennummer zu " + ctrNo + " konnte nicht erkannt werden.");
+      if (/^[A-Z]{4}\d{7}$/.test(ctrNo)) {
+        warnings.push("Zeile " + (r + 1) + ": Wagennummer zu " + ctrNo + " konnte nicht erkannt werden.");
+      }
       continue;
     }
+    if (!groups.has(wagonNo)) {
+      if (wagonOrder.length >= 4) throw new Error("Die Zusatzliste enthält mehr als vier Wagen. Erwartet werden Wagen 7–10.");
+      groups.set(wagonNo, { slots:new Map(), firstRow:r });
+      wagonOrder.push(wagonNo);
+    }
+    if (!/^[A-Z]{4}\d{7}$/.test(ctrNo)) continue;
 
     const tara = toNumber(row[idx.tara]);
     const loadWeight = toNumber(row[idx.load]);
@@ -964,57 +974,55 @@ function parseHellmannSecondPart(bytes) {
     }
     if (!fe) warnings.push("Zeile " + (r + 1) + ": Leervoll-Status bei " + ctrNo + " nicht eindeutig.");
 
-    if (!groups.has(wagonNo)) {
-      if (wagonOrder.length >= 4) throw new Error("Die Zusatzliste enthält mehr als vier Wagen. Erwartet werden Wagen 7–10.");
-      groups.set(wagonNo, []);
-      wagonOrder.push(wagonNo);
+    const group = groups.get(wagonNo);
+    const sourceSeq = idx.seq >= 0 ? toNumber(row[idx.seq]) : null;
+    // Die lfd. Nummer ist in der Regensburg-Liste in Viererblöcke aufgeteilt.
+    // Ein leerer Stellplatz innerhalb eines Wagens darf die übrigen Slots
+    // NICHT verschieben (z. B. Plätze 1, 3 und 4 bleiben 1, 3, 4).
+    let slot = Number.isInteger(sourceSeq) && sourceSeq > 0 ? (sourceSeq - 1) % 4 + 1 : r - group.firstRow + 1;
+    if (slot < 1 || slot > 4 || group.slots.has(slot)) {
+      const free = [1,2,3,4].find(i => !group.slots.has(i));
+      if (!free) throw new Error("Wagen " + wagonNo + " enthält mehr als vier Ladeeinheiten.");
+      warnings.push("Zeile " + (r + 1) + ": Stellplatz von " + ctrNo + " nicht eindeutig, Ersatzplatz " + free + " verwendet.");
+      slot = free;
     }
-    const list = groups.get(wagonNo);
-    if (list.length >= 4) throw new Error("Wagen " + wagonNo + " enthält mehr als vier Ladeeinheiten.");
 
     if (idx.destination >= 0) {
       const destination = normalizeHeader(row[idx.destination]);
       if (destination && !destination.includes("osna")) warnings.push("Zeile " + (r + 1) + ": Ziel ist nicht Osnabrück bei " + ctrNo + ".");
     }
-
-    list.push({
-      ctrNo,
-      wagonNo,
-      tara,
-      loadWeight,
-      gross: tara + loadWeight,
-      fe,
-      nhm,
-      bl,
-      sourceRow: r + 1
+    group.slots.set(slot, {
+      ctrNo, wagonNo, slot, tara, loadWeight, gross:tara + loadWeight,
+      fe, nhm, bl, sourceRow:r + 1
     });
   }
 
-  if (!wagonOrder.length) throw new Error("Keine Ladeeinheiten in der Regensburg-Zusatzliste erkannt.");
+  if (!wagonOrder.length) throw new Error("Keine Wagen in der Regensburg-Zusatzliste erkannt.");
 
   const wagons = new Map();
   const entries = [];
   wagonOrder.forEach((wagonNo, wagonIndex) => {
     const seq = 7 + wagonIndex;
     const slots = new Map();
-    groups.get(wagonNo).forEach((item, i) => {
-      const entry = { ...item, wagonSeq:seq, slot:i + 1 };
-      slots.set(i + 1, entry);
+    const units = [...groups.get(wagonNo).slots.values()].sort((a,b) => a.slot - b.slot);
+    for (const item of units) {
+      const entry = { ...item, wagonSeq:seq };
+      slots.set(item.slot, entry);
       entries.push(entry);
-    });
+    }
     wagons.set(seq, { wagonNo, slots });
   });
 
   if (wagonOrder.length !== 4) warnings.push("Es wurden " + wagonOrder.length + " statt 4 Zusatzwagen erkannt; übrige Wagenplätze bleiben vorbereitet.");
-  for (const [seq, wagon] of wagons) {
-    if (wagon.slots.size !== 4) warnings.push("Wagen " + seq + " (" + wagon.wagonNo + ") enthält " + wagon.slots.size + " statt 4 Ladeeinheiten.");
-  }
+  // Leere Wagen und freie Stellplätze sind regulär und keine Fehlermeldung.
+  const emptyWagonCount = [...wagons.values()].filter(w => w.slots.size === 0).length;
 
   return {
     date: sourceDate,
     entries,
     wagons,
     wagonCount: wagons.size,
+    emptyWagonCount,
     unitCount: entries.length,
     taras: [...taras].sort((a,b) => a-b),
     warnings
@@ -1037,13 +1045,15 @@ function mergeHellmannSecondPart(base, part2, sourceName) {
     sourceName: (base.part1SourceName || base.sourceName) + " + " + sourceName,
     entries,
     wagons,
-    wagonCount: new Set(entries.map(e => e.wagonNo)).size,
+    wagonCount: wagons.size,
+    emptyWagonCount: [...wagons.values()].filter(w => w.slots.size === 0).length,
     unitCount: entries.length,
     warnings,
     part2: {
       sourceName,
       date: part2.date,
       wagonCount: part2.wagonCount,
+      emptyWagonCount: part2.emptyWagonCount,
       unitCount: part2.unitCount,
       taras: part2.taras
     }
@@ -2369,8 +2379,9 @@ function renderResult(data) {
   } else if (mode === "hellmann") {
     previewLabel = data.unitCount + " Ladeeinheiten";
     stats = [["Zugnummer",data.trainNo],["ETA",data.etaDate + " 04:00"],["Wagen",data.wagonCount + " / 10"],["Ladeeinheiten",data.unitCount]];
-    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["SLOT",r=>r.slot],["CTR_NO",r=>r.ctrNo],["FE",r=>r.fe],["Gross",r=>formatNumber(r.gross)]];
-    previewRows = data.entries;
+    columns = [["SEQ",r=>r.wagonSeq],["WAG_NO",r=>r.wagonNo],["SLOT",r=>r.slot ?? "–"],["CTR_NO",r=>r.emptyWagon ? "LEERWAGEN" : r.ctrNo],["FE",r=>r.fe],["Gross",r=>r.gross == null ? "" : formatNumber(r.gross)]];
+    const emptyRows = [...data.wagons].filter(([seq,w]) => w.slots.size === 0).map(([seq,w]) => ({wagonSeq:seq,wagonNo:w.wagonNo,slot:null,ctrNo:"",fe:"",gross:null,emptyWagon:true}));
+    previewRows = [...data.entries,...emptyRows].sort((a,b) => a.wagonSeq - b.wagonSeq || (a.slot || 0) - (b.slot || 0));
     subtitle = data.part2 ? "Landshut + Regensburg → Osnabrück" : "Landshut → Osnabrück · Wagen 7–10 vorbereitet";
     rules = [["LINER","HWL"],["ETA","+1 Tag · 04:00"],["Teil 2",data.part2 ? "ergänzt" : "offen"]];
   } else if (mode === "medInbound") {
@@ -2505,6 +2516,7 @@ function renderHellmannPart2Control(data) {
     const taraText = data.part2.taras?.length ? data.part2.taras.map(v => formatNumber(v) + " kg").join(" / ") : "aus Datei";
     meta.innerHTML = [
       ["Wagen", data.part2.wagonCount],
+      ["Leerwagen", data.part2.emptyWagonCount || 0],
       ["Ladeeinheiten", data.part2.unitCount],
       ["Tara", taraText],
       ["Datum Zusatzliste", data.part2.date || "–"]
