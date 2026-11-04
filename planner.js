@@ -26,7 +26,7 @@
       <div class="planner-output-head"><div><h4>Grafischer Zug · Wagenfolge</h4><p>Alle Containerdaten direkt sichtbar. Schematische Positionen, nicht maßstabsgetreue Verriegelung.</p></div>
       <div class="planner-export-actions"><button id="plannerPrint" class="primary-btn" type="button" title="Gesamten Zug auf einer DIN-A4-Seite im Querformat drucken oder als PDF speichern">Steckübersicht drucken · DIN A4</button><button id="plannerDownload" class="ghost-btn" type="button">Planungsentwurf als CSV ↓</button></div></div>
       <div id="plannerWarnings"></div>
-      <div class="planner-legend planner-legend-v2"><span><i class="planner-legend-red"></i> Container</span><span><i class="planner-legend-green"></i> Leere HAPAG-Container</span><span>Gleisposition 1–100 · Zugende bei 100</span></div>
+      <div class="planner-legend planner-legend-v2"><span><i class="planner-legend-red"></i> Container</span><span><i class="planner-legend-green"></i> Leere HAPAG-Container</span><span>⚠ UN = Gefahrgut</span><span>Yard C ≈ 15 · D ≈ 75 · COMMUNITY bevorzugt 12–95</span><span>Gleisposition 1–100 · Zugende bei 100</span></div>
       <section class="planner-train-panel" aria-label="Horizontaler Zugladeplan">
         <div class="planner-train-titlebar"><span class="planner-title-icon" aria-hidden="true">▣</span><strong>TFG · Zugverplanung</strong><span class="planner-train-status">SCHEMATISCHER ENTWURF</span></div>
         <div class="planner-train-toolbar"><span id="plannerTrainInfo">Zugansicht</span><div class="planner-train-nav"><button id="plannerReverse" class="planner-scroll-button planner-reverse-button" type="button" aria-pressed="false" title="Tatsächliche Wagenreihung im Ladegleis umkehren und Verplanung neu berechnen">⇄ Wagenreihung drehen</button><button id="plannerScrollLeft" class="planner-scroll-button" type="button" title="Nach links scrollen" aria-label="Nach links scrollen">◀</button><button id="plannerScrollRight" class="planner-scroll-button" type="button" title="Nach rechts scrollen" aria-label="Nach rechts scrollen">▶</button></div></div>
@@ -104,13 +104,14 @@
   function unitView(u,w){
     const green=window.NexoraPlannerEngine.isEmptyHapag(u);
     const style=`left:${100*u.offsetFt/w.capacityFt}%;width:${100*u.lengthFt/w.capacityFt}%`;
-    const fullInfo=`${w.destination} · ${u.ctrNo} · ${u.lengthFt} Fuß · ${u.yardLocation} · ${kg(u.gross)}${green?' · Leerer HAPAG-Container':''}`;
+    const danger=window.NexoraPlannerEngine.isHazardous(u);
+    const fullInfo=`${w.destination} · ${u.ctrNo} · ${u.lengthFt} Fuß · ${u.yardLocation} · ${kg(u.gross)}${green?' · Leerer HAPAG-Container':''}${danger?' · GEFAHRGUT'+(u.unNo?' UN '+u.unNo:' – UN prüfen'):''}`;
     const [containerPrefix,containerDigits]=split20ContainerNumber(u.ctrNo);
     const numberLabel=Number(u.lengthFt)===20 && containerDigits
       ? `<span class="planner-container-no-small planner-container-no-20"><span>${esc(containerPrefix)}</span><span>${esc(containerDigits)}</span></span>`
       : `<span class="planner-container-no-small">${esc(u.ctrNo)}</span>`;
     return `<div class="planner-container-v2 ${green?'planner-container-hapag':'planner-container-red'}" style="${style}" title="${esc(fullInfo)}" aria-label="${esc(fullInfo)}">
-      <div class="planner-container-head"><span>${esc(w.destination)}</span><span>${esc(u.fe==='E'?'L':u.fe==='F'?'V':'')}</span></div>
+      <div class="planner-container-head"><span>${esc(w.destination)}</span><span>${danger?'⚠ UN':' '}${esc(u.fe==='E'?'L':u.fe==='F'?'V':'')}</span></div>
       <strong class="planner-container-size">${esc(u.lengthFt)}'</strong>
       ${numberLabel}
       <span class="planner-container-yard">${esc(u.yardLocation||'COMMUNITY')}</span>
@@ -145,6 +146,8 @@
       'Nur Verplanungsvorschlag: keine geprüften Lastgrenzen, Achslasten, zulässigen Containerkombinationen und konkreten Verriegelungspositionen.',
       ...notes,
       ...(plan.unplanned.some(u=>String(u.fe||'').trim().toUpperCase()==='E')?['Bei Platzmangel werden Leercontainer erst nach allen möglichen Vollcontainern eingeplant.']:[]),
+      ...(plan.wagons.some(w=>w.units.some(u=>u.hazardous))?['Gefahrgut: höchstens ein Container mit Gefahrgutkennzeichnung je Wagen; UN-Nummern und weitere RID-Vorgaben vor Ort prüfen.']:[]),
+      ...(plan.communityExceptions?[`${plan.communityExceptions} COMMUNITY-Einheit(en) aus Kapazitäts-/Belegungsgründen außerhalb des bevorzugten Gleisbereichs 12–95.`]:[]),
       ...plan.yardWarnings,
       ...(plan.unknownWagons.length?[`${plan.unknownWagons.length} Wagen ohne eindeutig zuordenbare Stellplatzkapazität bleiben unbeladen.`]:[]),
       ...(plan.unknownMatches?[`${plan.unknownMatches} Einheiten mit nicht als Yardposition lesbarem Standort wurden als COMMUNITY behandelt.`]:[]),
@@ -191,6 +194,7 @@
       const plan=window.NexoraPlannerEngine.allocate([...parsed.wagonData.wagons.values()],parsed.listData.entries,yardRows,{reverse:reversed});
       if(plan.planned+plan.unplanned.length!==plan.total)throw new Error('Zuordnungsfehler: Containermengen stimmen nicht überein.');
       if(plan.wagons.some(w=>w.units.some(u=>u.destination!==w.destination)))throw new Error('Interner Fehler: Zielbahnhöfe auf demselben Wagen vermischt.');
+      if(plan.wagons.some(w=>w.units.filter(u=>window.NexoraPlannerEngine.isHazardous(u)).length>1))throw new Error('Interner Fehler: mehr als eine Gefahrguteinheit auf demselben Wagen.');
       latest={plan};render(plan,parsed.notes);
       showMessage(yardFile?`Entwurf berechnet. ${plan.yardMatches} von ${plan.total} Containern mit Yardposition; übrige COMMUNITY.`:
         `Entwurf berechnet. Alle Container haben zunächst Standort COMMUNITY. Yard-Abzug kann nachträglich ergänzt werden.`,'success');
@@ -318,6 +322,10 @@
               svg.push(txt(centerX,deckY+16*rowFactor,`${u.lengthFt}'`,textSize,'#ffffff',true,'text-anchor="middle"'));
               svg.push(txt(centerX,deckY+29*rowFactor,id,ctrSize,'#ffffff',true,'text-anchor="middle"'));
             }
+            if(window.NexoraPlannerEngine.isHazardous(u)){
+              // Compact mark outside the cargo box: number remains legible.
+              svg.push(txt(centerX,deckY-3*rowFactor,`UN ${u.unNo||'?'}`,6.6*rowFactor,'#b45309',true,'text-anchor="middle"'));
+            }
           }
         }else{
           svg.push(txt(x+frameW/2,deckY+deckH/2+3*rowFactor,'?',10*rowFactor,'#627a8c',true,'text-anchor="middle"'));
@@ -360,12 +368,12 @@
 
   $('plannerDownload').addEventListener('click',()=>{
     if(!latest)return;
-    const rows=[['HINWEIS','WAGENFOLGE','WAG_NO','ACHSSEN','LUEP_DM','GLEIS_POSITION','ZIELBAHNHOF','CONTAINER','FT','YARD_POSITION','GROSS_KG','SCHEMATISCHER_VERSATZ_FT','WAGEN_LADUNG_KG','ANMERKUNG']];
+    const rows=[['HINWEIS','WAGENFOLGE','WAG_NO','ACHSSEN','LUEP_DM','GLEIS_POSITION','ZIELBAHNHOF','CONTAINER','FT','YARD_POSITION','GROSS_KG','SCHEMATISCHER_VERSATZ_FT','WAGEN_LADUNG_KG','ANMERKUNG','GEFAHRGUT','UN_NUMMER']];
     for(const w of latest.plan.wagons){
-      if(!w.units.length)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),'','','','','','','0','Wagen nicht beladen']);
-      for(const u of w.units)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),w.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,u.offsetFt,w.assignedGrossKg,'NICHT ZUM VERLADEN FREIGEGEBEN']);
+      if(!w.units.length)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),'','','','','','','0','Wagen nicht beladen','','']);
+      for(const u of w.units)rows.push(['PRÜFENTWURF',w.displaySeq,w.wagonNo,w.axles,w.lup,pos(w.positionCenter),w.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,u.offsetFt,w.assignedGrossKg,'NICHT ZUM VERLADEN FREIGEGEBEN',u.hazardous?'JA':'NEIN',u.unNo||'']);
     }
-    for(const u of latest.plan.unplanned)rows.push(['OFFEN','','','','','',u.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,'','',u.reason]);
+    for(const u of latest.plan.unplanned)rows.push(['OFFEN','','','','','',u.destination,u.ctrNo,u.lengthFt,u.yardLocation,u.gross,'','',u.reason,u.hazardous?'JA':'NEIN',u.unNo||'']);
     const csv='\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
     const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     const a=document.createElement('a');a.href=url;a.download='NEXORA_TrainPlanner_PRUEFENTWURF.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
