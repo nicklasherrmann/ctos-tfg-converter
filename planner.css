@@ -145,3 +145,10 @@
 /* v12: experimenteller COPARN-Export, sichtbar und unmissverstaendlich markiert. */
 .planner-coparn-notice{margin:8px 0 12px;padding:9px 13px;background:#fff8e8;border:1px solid #ebc87c;border-radius:6px;color:#765318;font-size:11px;line-height:1.5}
 @media print{.planner-coparn-notice{display:none!important}}
+
+/* v13: required track number for TOPX-like COPARN preview. */
+.planner-track-label{display:flex;align-items:center;gap:7px;white-space:nowrap;color:#40566b;font-size:10px;font-weight:750}
+.planner-track-label input{width:88px;min-height:32px;padding:6px 8px;border:1px solid #aabdcf;border-radius:6px;background:#fff;color:#203a4d;font-size:11px;font-variant-numeric:tabular-nums}
+.planner-track-label input:focus{outline:2px solid #87bfdc;outline-offset:1px}
+@media(max-width:620px){.planner-track-label{width:100%;justify-content:flex-end}}
+@media print{.planner-track-label{display:none!important}}
