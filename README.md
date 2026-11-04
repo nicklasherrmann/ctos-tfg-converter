@@ -144,3 +144,8 @@ Tests: `node --test tests/tfg-outbound-rules.test.js`.
   tragen Wagennummer und Platzfolge, aber keine Containerdaten.
 - Beispiel 04.11.2026: PDF 6 Wagen / 22 Ladeeinheiten, XLS 4 Wagen / 11 Ladeeinheiten
   (darunter 1 leerer Wagen), zusammen 10 Wagen / 33 Ladeeinheiten.
+
+
+## v12 – experimentelle TFG-COPARN aus dem Train Planner
+
+Nach erfolgter Wagen-/Containerverplanung bietet der Train Planner den Button **COPARN mit Ladeplan (Test)** neben der A4-Druckfunktion. Die XLSX-Datei verwendet das bestehende, unveraenderte 63-spaltige TFG-COPARN-Layout auf dem Tabellenblatt `COPARN-Export-Example-RBS` und haengt **genau zwei** Testfelder an: `Plan Wagon No` und `Plan Loc`. Die Zeilen folgen der aktuell angezeigten Wagenfolge und der schematischen Position links nach rechts (auch bei umgekehrter Wagenreihung). Vollstaendig verplante Container erhalten ihre echte Wagennummer. Nicht verplante Container bleiben enthalten, haben aber leere Planfelder. **`Plan Loc` enthaelt absichtlich das NEXORA-interne Testformat `NEXORA:10-50FT:MITTIG` oder `NEXORA:0-20FT`**; es ist *kein* bestaetigter TOPX-Code. Der Dateiname enthaelt `TEST` und `NICHT_EINSPIELEN`. Diese Datei darf nicht ohne ausdrueckliche Bestaetigung durch RBS/TOPS in den produktiven Import eingestellt werden. Die eigentlichen NEXORA-Planungs- und TFG-Ausgangsregeln bleiben unveraendert.

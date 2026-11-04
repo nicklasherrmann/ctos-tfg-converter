@@ -141,3 +141,7 @@
 .planner-train-toolbar{gap:12px}
 .planner-train-toolbar #plannerTrainInfo{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:680px){.planner-reverse-button{min-width:0;padding:0 6px}.planner-train-toolbar{flex-wrap:wrap}}
+
+/* v12: experimenteller COPARN-Export, sichtbar und unmissverstaendlich markiert. */
+.planner-coparn-notice{margin:8px 0 12px;padding:9px 13px;background:#fff8e8;border:1px solid #ebc87c;border-radius:6px;color:#765318;font-size:11px;line-height:1.5}
+@media print{.planner-coparn-notice{display:none!important}}
