@@ -127,3 +127,20 @@ Tests: `node --test tests/tfg-outbound-rules.test.js`.
 - In der Zugansicht werden bei 2-Achsern **max. 20 t** und **max. 20.000 kg** kenntlich gemacht. Die A4-Übersicht nennt die Regel ebenfalls; im CSV-Prüfentwurf gibt es die zusätzliche Spalte `MAX_CONTAINERBRUTTO_KG`.
 - Für **4- und 6-achsige Wagen** wird hier ausdrücklich **kein** pauschaler Grenzwert erfunden: maßgebliche tatsächliche Lastgrenzen, Achslastverteilung und zugelassene Verriegelungskombinationen sind weiterhin fachlich zu prüfen. Der Entwurf ist keine Verladefreigabe.
 - Unverändert: Gefahrgut, Zieltrennung, Vollcontainer-Vorrang, Yard- und COMMUNITY-Priorität, Zugreihungsumkehr, A4-Druck, TFG-Export und andere Converter.
+
+
+## NEXORA v11 – Hellmann Eingang: Leerwagen und Stellplätze
+
+- Die Regensburg-Zusatzliste erkennt alle Wagen **über die 12-stellige Wagennummer**,
+  auch wenn kein Container zugeordnet ist. Physische Wagen bleiben in Quellreihenfolge
+  auf den vorbereiteten Plätzen 7–10.
+- Vier Zusatzwagen werden richtig als vier Wagen gezählt (mit separater Anzahl Leerwagen);
+  die Summen und die Vorschau berücksichtigen unbeladene Wagen.
+- Die Lfd.-Nr. der vierergruppierten Quelle bestimmt den Stellplatz. Leere Zwischenplätze
+  werden **nicht** zusammengeschoben (1, 3, 4 bleibt 1, 3, 4).
+- Null, drei oder vier beladene Stellplätze sind regulär; es gibt keine irreführende Warnung
+  für Teilbelegung. Fehlende Wagennummern oder uneindeutige Plätze werden weiter gemeldet.
+- Der TCM-Export bleibt bei zehn Wagen und vier Slots je Wagen (40 Zeilen); Leerwagen
+  tragen Wagennummer und Platzfolge, aber keine Containerdaten.
+- Beispiel 04.11.2026: PDF 6 Wagen / 22 Ladeeinheiten, XLS 4 Wagen / 11 Ladeeinheiten
+  (darunter 1 leerer Wagen), zusammen 10 Wagen / 33 Ladeeinheiten.
