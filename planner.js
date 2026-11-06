@@ -14,7 +14,7 @@
       Achslastverteilung, Containerkombinationen und Gefahrgutvorgaben sind nicht technisch geprüft.
       Vor einer realen Verladung fachlich freigeben lassen.</div>
     <div class="planner-uploads">
-      <label class="planner-upload" for="plannerWagons"><span>01 · PFLICHT</span><strong>MITVEAN-Wagenliste</strong><small id="plannerWagonName">Wagenlisten-PDF auswählen</small><input id="plannerWagons" type="file" accept=".pdf,application/pdf"></label>
+      <label class="planner-upload" for="plannerWagons"><span>01 · PFLICHT</span><strong>MITVEAN-/MITSVKI-Wagenliste</strong><small id="plannerWagonName">Wagenlisten-PDF auswählen</small><input id="plannerWagons" type="file" accept=".pdf,application/pdf"></label>
       <label class="planner-upload" for="plannerList"><span>02 · PFLICHT</span><strong>TFG-Ladeliste</strong><small id="plannerListName">Excel-Datei · Blatt „Export“</small><input id="plannerList" type="file" accept=".xlsx,.xls"></label>
       <label class="planner-upload planner-upload-optional" for="plannerYard"><span>03 · OPTIONAL</span><strong>Yard-Abzug</strong><small id="plannerYardName">Ohne Yard-Abzug = COMMUNITY</small><input id="plannerYard" type="file" accept=".xlsx,.xls"></label>
     </div>
@@ -159,8 +159,8 @@
     const view=$('plannerWagonList');
     const previousScroll=view.scrollLeft;
     $('plannerWagonTrack').innerHTML=plan.wagons.map(wagonView).join('');
-    $('plannerTrainInfo').textContent=`${plan.wagons.length} Wagen · ${plan.planned} Container · ${pos(plan.totalMeters)} m · ${plan.reverse?'Reihung umgekehrt':'MITVEAN-Reihung'}`;
-    $('plannerOrderLabel').textContent=`${plan.reverse?'Wagenreihung gegenüber MITVEAN umgekehrt':'Reihenfolge gemäß MITVEAN'} · nicht maßstabsgerecht`;
+    $('plannerTrainInfo').textContent=`${plan.wagons.length} Wagen · ${plan.planned} Container · ${pos(plan.totalMeters)} m · ${plan.reverse?'Reihung umgekehrt':`${parsed?.wagonData?.sourceFormat||'Wagenliste'}-Reihung`}`;
+    $('plannerOrderLabel').textContent=`${plan.reverse?'Wagenreihung gegenüber Wagenliste umgekehrt':'Reihenfolge gemäß Wagenliste'} · nicht maßstabsgerecht`;
     // Keep the viewed portion when the optional Yard extract re-optimizes a plan.
     view.scrollLeft=previousScroll;
     $('plannerUnplanned').innerHTML=plan.unplanned.length?`<div class="planner-table-wrap"><table><thead><tr><th>Container</th><th>Ziel</th><th>Yard</th><th>Größe</th><th>Gewicht</th><th>Grund</th></tr></thead><tbody>`+
@@ -169,8 +169,8 @@
   }
   async function runPlanning(reuse){
     const wagonFile=$('plannerWagons').files?.[0],listFile=$('plannerList').files?.[0],yardFile=$('plannerYard').files?.[0];
-    if(!wagonFile||!listFile)return showMessage('Bitte MITVEAN-Wagenliste und TFG-Ladeliste auswählen. Der Yard-Abzug ist optional.');
-    if(!/\.pdf$/i.test(wagonFile.name)||!/\.(xlsx|xls)$/i.test(listFile.name))return showMessage('Benötigt werden eine MITVEAN-PDF und eine TFG-Excel-Datei.');
+    if(!wagonFile||!listFile)return showMessage('Bitte MITVEAN-/MITSVKI-Wagenliste und TFG-Ladeliste auswählen. Der Yard-Abzug ist optional.');
+    if(!/\.pdf$/i.test(wagonFile.name)||!/\.(xlsx|xls)$/i.test(listFile.name))return showMessage('Benötigt werden eine MITVEAN- oder MITSVKI-Wagenliste (PDF) und eine TFG-Excel-Datei.');
     if(yardFile&&!/\.(xlsx|xls)$/i.test(yardFile.name))return showMessage('Der Yard-Abzug muss eine Excel-Datei sein.');
     const btn=$('plannerRun');btn.disabled=true;btn.textContent='Verplanung wird berechnet …';
     try{
@@ -212,7 +212,7 @@
     btn.textContent=reversed?'⇄ Reihung: GEDREHT':'⇄ Wagenreihung drehen';
     if(parsed){await runPlanning(true);}else showMessage(reversed?
       'Umgekehrte Wagenreihung ausgewählt. Nach dem Upload wird der Zug in dieser Richtung verplant.':
-      'Normale Wagenreihung gemäß MITVEAN ausgewählt.','success');
+      'Normale Wagenreihung gemäß Wagenliste ausgewählt.','success');
   });
   const scrollView=$('plannerWagonList');
   for (const [id,direction] of [['plannerScrollLeft',-1],['plannerScrollRight',1]]) {
@@ -229,7 +229,7 @@
   const svgn=(v)=>Number(v).toFixed(2);
   function partitionForPrint(wagons,rowCount){
     // Consecutive wagon groups, balanced by their real coupling lengths (LüP).
-    // Preserves MITVEAN order and keeps the scale consistent on every line.
+    // Preserves source wagon order and keeps the scale consistent on every line.
     const size=w=>Math.max(10,Number(w.lup)/10||20);
     const groups=[],total=wagons.reduce((a,w)=>a+size(w),0);
     let index=0,remaining=total;
@@ -271,7 +271,7 @@
     svg.push(txt(27,32,'NEXORA  ·  TFG TRAIN PLANNER',18,'#164568',true));
     svg.push(txt(27,51,'STECKÜBERSICHT · GESAMTZUG',13,'#164568',true));
     svg.push(txt(1110,33,'DIN A4  ·  QUERFORMAT  ·  1 SEITE',11,'#365d79',true,'text-anchor="end"'));
-    svg.push(txt(1110,51,`${wagonCount} Wagen  |  ${plan.planned}/${plan.total} Container  |  ${plan.reverse?'REIHUNG GEDREHT':'MITVEAN-REIHUNG'}`,11,'#365d79',false,'text-anchor="end"'));
+    svg.push(txt(1110,51,`${wagonCount} Wagen  |  ${plan.planned}/${plan.total} Container  |  ${plan.reverse?'REIHUNG GEDREHT':'WAGENLISTE-REIHUNG'}`,11,'#365d79',false,'text-anchor="end"'));
     svg.push(box(12,70,1116,29,'#fff2df','#e4ad65',1,3));
     svg.push(txt(24,89,'PRÜFENTWURF · 2-Achser max. 20 t Containerbrutto · Übrige Lastgrenzen, Verriegelung und Achslasten prüfen.',12,'#834d1b',true));
     let displayed=0;
