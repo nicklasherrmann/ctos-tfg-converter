@@ -364,7 +364,7 @@ function applyModeUi() {
   fileInput.accept = mode === "hwlOutbound" ? ".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" : (expectsPdf ? ".pdf,application/pdf" : ".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel");
   if (mode === "tfgPlanner") {
     document.querySelector(".hero h2").textContent = "TFG-Zugverplanung erstellen.";
-    heroText.textContent = "MITVEAN-Wagenliste und TFG-Ladeliste zu einem prüfpflichtigen Verplanungsvorschlag zusammenführen.";
+    heroText.textContent = "MITVEAN-/MITSVKI-Wagenliste und TFG-Ladeliste zu einem prüfpflichtigen Verplanungsvorschlag zusammenführen.";
     heroFrom.textContent = "PDF + XLSX";
   } else if (mode === "inbound") {
     document.querySelector(".hero h2").textContent = "TFG-Eingang konvertieren.";
@@ -1201,6 +1201,7 @@ async function parseMitveanPdf(bytes) {
   const trainNos = new Set();
   const dates = new Set();
   let maxLnr = 0;
+  let sourceFormat = "Wagenliste";
 
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
     const page = await pdf.getPage(pageNo);
@@ -1209,13 +1210,15 @@ async function parseMitveanPdf(bytes) {
       text:i.str.trim(), x:Number(i.transform[4]), y:Number(i.transform[5])
     }));
     const lines = groupPdfRows(items, 2.8);
+    if (lines.some(line => /\bMITSVKI\b/i.test(line))) sourceFormat = "MITSVKI";
+    else if (sourceFormat === "Wagenliste" && lines.some(line => /\bMITVEAN\b/i.test(line))) sourceFormat = "MITVEAN";
     for (const line of lines) {
       const dm = line.match(/\b(\d{2})\.(\d{2})\.(\d{2}|\d{4})\b/);
       if (dm) dates.add(`${dm[1]}.${dm[2]}.${dm[3].length === 2 ? "20" + dm[3] : dm[3]}`);
-      // Beide DB-Ausgaben kommen vor:
-      // MITVEAN "Liste Gleisinhalt" mit Z50417/2 und
-      // MITSVKI "Liste Eingangszug" mit "Zug 50419".
-      for (const tm of line.matchAll(/\bZ(\d{5})\/\d+\b/g)) trainNos.add(Number(tm[1]));
+      // Zugnummern in beiden DB-Formaten:
+      // MITVEAN: Z50417/2; MITSVKI Eingang: Zug 50419;
+      // MITSVKI Ausgang: "Tag 06 Zug Z50417 nach ...".
+      for (const tm of line.matchAll(/\bZ(\d{5})(?:\/\d+)?\b/gi)) trainNos.add(Number(tm[1]));
       for (const tm of line.matchAll(/\bZug\s+(\d{5})\b/gi)) trainNos.add(Number(tm[1]));
 
       let lnr, wagonNo, axles, lup;
@@ -1229,10 +1232,14 @@ async function parseMitveanPdf(bytes) {
         axles = Number(oldFmt[6]);
         lup = Number(oldFmt[7]);
       } else {
-        // MITSVKI, z. B.:
-        // 2 1 T 3180 4960 129-3 6 267 ...   (erste Zeile mit Gruppen-Nr.)
-        //   2 T 3180 4850 286-4 6 268 ...   (weitere Zeilen)
-        const newFmt = line.match(/^\s*(?:\d+\s+)?(\d{1,3})\s+T\s+(\d{4})\s+(\d{4})\s+(\d{3})\s*-\s*(\d)\s+(\d)\s+(\d{3})\b/i);
+        // MITSVKI "Liste Ausgangszug": zusätzliche Gleisnummer + ST:
+        // 02 1 157 ST 3180 4850 942-2 6 264 ... (erste Zeile, mit Gruppennummer)
+        //    2 157 ST 2180 4427 367-8 2 141 ... (Folgezeile)
+        // MITSVKI "Liste Eingangszug" (älteres Layout):
+        // 2 1 T 3180 4960 129-3 6 267 ... / 2 T 3180 4850 286-4 6 268 ...
+        const outgoingFmt = line.match(/^\s*(?:\d{1,2}\s+)?(\d{1,3})\s+\d{2,4}\s+ST\s+(\d{4})\s+(\d{4})\s+(\d{3})\s*-\s*(\d)\s+(\d)\s+(\d{3})\b/i);
+        const incomingFmt = line.match(/^\s*(?:\d+\s+)?(\d{1,3})\s+T\s+(\d{4})\s+(\d{4})\s+(\d{3})\s*-\s*(\d)\s+(\d)\s+(\d{3})\b/i);
+        const newFmt = outgoingFmt || incomingFmt;
         if (!newFmt) continue;
         lnr = Number(newFmt[1]);
         wagonNo = newFmt[2] + newFmt[3] + newFmt[4] + newFmt[5];
@@ -1248,10 +1255,10 @@ async function parseMitveanPdf(bytes) {
     }
   }
 
-  if (!wagons.size) throw new Error("Keine Wagenzeilen erkannt. Unterstützt werden MITVEAN „Liste Gleisinhalt“ und MITSVKI „Liste Eingangszug“.");
+  if (!wagons.size) throw new Error("Keine Wagenzeilen erkannt. Unterstützt werden MITVEAN „Liste Gleisinhalt“ sowie MITSVKI „Liste Eingangs-/Ausgangszug“.");
   const trainNo = trainNos.size === 1 ? [...trainNos][0] : null;
   if (trainNos.size > 1) warnings.push("Mehrere Zugnummern in der Wagenlisten-PDF erkannt: " + [...trainNos].join(", ") + ".");
-  return { wagons, wagonCount:wagons.size, maxLnr, trainNo, date:dates.size === 1 ? [...dates][0] : null, warnings };
+  return { wagons, wagonCount:wagons.size, maxLnr, trainNo, date:dates.size === 1 ? [...dates][0] : null, sourceFormat, warnings };
 }
 
 function finalizeTfgTcm(base, mitvean, sourceName) {
@@ -1354,7 +1361,7 @@ function finalizeTfgTcm(base, mitvean, sourceName) {
 async function handleTfgMitveanFile(file) {
   if (mode !== "tfgFinalize" || !parsedState) return;
   const isPdf = file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
-  if (!isPdf) { renderTfgMitveanError("Bitte die MITVEAN Liste Gleisinhalt als PDF auswählen."); return; }
+  if (!isPdf) { renderTfgMitveanError("Bitte eine MITVEAN- oder MITSVKI-Wagenliste als PDF auswählen."); return; }
   const btn = el("tfgMitveanBtn");
   btn.disabled = true;
   btn.textContent = "Wird gelesen…";
@@ -2485,10 +2492,10 @@ function renderTfgMitveanControl(data) {
   } else {
     icon.textContent = "2";
     el("tfgMitveanTitle").textContent = "Schritt 2 · Wagenliste";
-    el("tfgMitveanText").textContent = "Jetzt die Wagenlisten-PDF hinzufügen. Unterstützt werden MITVEAN „Liste Gleisinhalt“ und MITSVKI „Liste Eingangszug“. Die WAG_SEQ_NO wird exakt aus der LNr übernommen und WAG_TYPE ergänzt.";
+    el("tfgMitveanText").textContent = "Jetzt die Wagenlisten-PDF hinzufügen. Unterstützt werden MITVEAN „Liste Gleisinhalt“ sowie MITSVKI „Liste Eingangs-/Ausgangszug“. Die WAG_SEQ_NO wird exakt aus der LNr übernommen und WAG_TYPE ergänzt.";
     btn.textContent = "PDF auswählen";
     el("tfgMitveanDropTitle").textContent = "Wagenlisten-PDF hier hineinziehen";
-    el("tfgMitveanDropText").textContent = "MITVEAN Liste Gleisinhalt oder MITSVKI Liste Eingangszug · Containerdaten bleiben unverändert";
+    el("tfgMitveanDropText").textContent = "MITVEAN Gleisinhalt oder MITSVKI Ein-/Ausgangszug · Containerdaten bleiben unverändert";
     meta.innerHTML = "<span>Schritt 1: <b>TCM geladen</b></span><span>Schritt 2: <b>Wagenliste PDF</b></span>";
   }
 }

@@ -173,3 +173,21 @@ Nach erfolgter Wagen-/Containerverplanung bietet der Train Planner den Button **
   links nach rechts kodiert; überlappende Einheiten werden abgewiesen.
   Nicht verplante Container behalten leere Planfelder. A4-Druck, Train-Planner-
   Algorithmus und sämtliche übrigen Converter bleiben unverändert.
+
+
+## NEXORA v14 – MITSVKI „Liste Ausgangszug“
+
+Der gemeinsame Wagenlisten-PDF-Parser unterstützt zusätzlich zum bisherigen MITVEAN
+„Liste Gleisinhalt“ und MITSVKI „Liste Eingangszug“ nun auch MITSVKI
+„Liste Ausgangszug“ mit den Feldern `Gr Lnr Gl DD A Fahrzeugnummer Achs LüP`.
+Die zusätzlichen Zeilenfelder `Gleis` und `ST` werden berücksichtigt;
+`Lnr`, zwölfstellige Wagenkennung, Achszahl und LüP in dm bleiben exakt erhalten.
+Zugnummern wie `Tag 06 Zug Z50417` werden ebenfalls ausgelesen.
+Beide Nutzeroberflächen (TFG TCM-Finalisierung und Train Planner) akzeptieren
+dasselbe PDF. Kein neuer Pflichtschritt und keine geänderte Planungsregel.
+
+**Verifikation:** Original-PDF vom 06.11.2026, Z50417, 37 Wagen,
+130 Achsen, DB-Summenfeld 687 Meter. Die Summe der 37 einzeln gelisteten
+LüP-Werte beträgt 688,6 Meter; der Planner nutzt die einzelnen LüP-Werte
+und keine pauschal gerundete Länge.
+Wagen-/Containerzulässigkeit bleibt ein prüfpflichtiger Verplanungsvorschlag.
